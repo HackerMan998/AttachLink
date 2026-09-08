@@ -5,7 +5,7 @@
 
 var AttachLinkConfig = {
   // 1. Manually specified characters (Supports multi-word names, e.g. ["Marie Onette"])
-  MANUAL_CHARACTERS: [],
+  MANUAL_CHARACTERS: [""],
 
   // 2. Anti-Spam Sighting Filter (Fixes the "Bartender Problem")
   // Unlisted NPCs must persist continuously across this many turns before receiving a card
@@ -77,10 +77,18 @@ var AttachLink = {
   init(state) {
     if (!state.attachLink) {
       state.attachLink = {
-        characters: {}, // Active tracked characters with cards
-        candidates: {}, // Sightings buffer for new, unverified NPCs
-        activeChar: null
+        characters: {},  // Active tracked characters with cards
+        candidates: {},  // Sightings buffer for new, unverified NPCs
+        activeChar: null,
+        bootstrapped: false // One-shot flag: create cards for all pre-existing NPC story cards
       };
+    }
+
+    // On very first run, immediately generate AttachLink cards for all named NPCs
+    // that already have story cards (physical description, personality, etc.)
+    if (!state.attachLink.bootstrapped) {
+      state.attachLink.bootstrapped = true;
+      this.bootstrapExistingNPCs(state);
     }
   },
 
@@ -117,9 +125,18 @@ var AttachLink = {
         // 2. If it's a character card, keep the FULL multi-word name
         var cardType = (card.type || "").toLowerCase();
         var isExplicitChar = cardType === "character" || cardType === "person" || cardType === "npc";
-        var isLikelyChar = !cardType && card.entry && /\b(she|he|her|his|hers|him|they|them|woman|man|girl|boy|singer|hair|eyes|ears|tall)\b/i.test(card.entry);
 
-        if (isExplicitChar || isLikelyChar) {
+        // Heuristic: no type set but entry reads like a character description.
+        // Deliberately broad to catch cards like "Frenni Fazclaire" which may not
+        // have type="character" but clearly describe a named person.
+        var entryText = (card.entry || card.description || "");
+        var isLikelyChar = !isExplicitChar && entryText.length > 30 &&
+          /\b(she|he|her|his|hers|him|they|them|woman|man|girl|boy|named|wears|stands|weighs|hair|eyes|ears|tall|inches|feet|pounds|personality|charismatic|introverted|extroverted|shy|confident|kind|cruel|brave|singer|manager|guard|servant|lord|lady|doctor|professor)\b/i.test(entryText);
+
+        // Also catch any card whose title is a Proper Name(s) with a non-trivial entry
+        var titleLooksLikeName = /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}$/.test(title) && entryText.length > 20;
+
+        if (isExplicitChar || isLikelyChar || titleLooksLikeName) {
           names.add(title);
         }
       }
@@ -127,7 +144,30 @@ var AttachLink = {
     return names;
   },
 
-  // Immediately generates and synchronizes AttachLink cards for all detected NPCs
+  // Checks if a character's AttachLink story card already exists
+  attachLinkCardExists(charName) {
+    if (typeof storyCards === 'undefined' || !Array.isArray(storyCards)) return false;
+    var cardTitle = `${charName}'s AttachLink`;
+    return storyCards.some(c => c && (c.title === cardTitle || c.name === cardTitle));
+  },
+
+  // One-shot boot: generates AttachLink cards for ALL NPCs that already have story cards.
+  // This runs automatically the very first time AttachLink initialises in a scenario,
+  // giving every pre-existing named NPC (e.g. Frenni Fazclaire) an instant tracking card.
+  bootstrapExistingNPCs(state) {
+    if (typeof storyCards === 'undefined' || !Array.isArray(storyCards)) return;
+
+    var recognized = this.getRecognizedCharacters();
+    for (var name of recognized) {
+      this.ensureCharacter(name, state);
+      // Only write the card if it doesn't already exist (preserves player edits)
+      if (!this.attachLinkCardExists(name)) {
+        this.syncStoryCard(state, name);
+      }
+    }
+  },
+
+  // Manually force-refresh all tracked characters' story cards (e.g. after adding a new NPC)
   syncAllStoryCards(state) {
     if (typeof storyCards === 'undefined' || !Array.isArray(storyCards)) return;
     this.init(state);
