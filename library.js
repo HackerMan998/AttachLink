@@ -1,10 +1,10 @@
 /* ==========================================================================
-   UNIVERSAL ATTACHLINK ENGINE v3.1 (NEUTRAL RELATIONSHIP PIPELINE)
+   UNIVERSAL ATTACHLINK ENGINE v4.1 (COGNITIVE RELATIONSHIP PIPELINE)
    Works for ANY Scenario: Fantasy, Sci-Fi, Slice-of-Life, Romance, etc.
    ========================================================================== */
 
-const AttachLinkConfig = {
-  // 1. Manually specified characters (Optional: add major character names here)
+var AttachLinkConfig = {
+  // 1. Manually specified characters (Supports multi-word names, e.g. ["Marie Onette"])
   MANUAL_CHARACTERS: [],
 
   // 2. Anti-Spam Sighting Filter (Fixes the "Bartender Problem")
@@ -13,6 +13,7 @@ const AttachLinkConfig = {
 
   // 3. Automation Settings
   autoDetectFromStoryCards: true, // Existing character cards are tracked immediately
+  autoGenerateStoryCardsForExistingNPCs: true, // Immediately generate companion AttachLink cards for all detected NPCs
   thoughtChancePercent: 65,      // % chance per turn for active NPC to form a thought
   lookbackTurnsForPresence: 5,   // Actions back to check who is active in the scene
   MAX_THOUGHTS_BEFORE_SUMMARY: 5, // Triggers automatic memory consolidation at 5 thoughts
@@ -43,29 +44,36 @@ const AttachLinkConfig = {
     "5": "Eternal Soulmates (Bound by true, unbreakable love)"
   },
 
-  // Keywords that adjust relationship
+  // Keywords that adjust relationship as fallback when LLM deltas are omitted
   keywords: {
-    bondInc: ["friend", "trust", "help", "protect", "save", "smile", "laugh", "thank", "kind", "honest", "promise", "safe", "gift", "hug", "care", "praise"],
-    bondDec: ["hate", "despise", "betray", "lie", "threaten", "attack", "insult", "mock", "cold", "ignore", "steal", "abandon", "enemy", "disgust", "hostile"],
+    bondInc: ["friend", "trust", "help", "protect", "save", "smile", "laugh", "thank", "kind", "honest", "promise", "safe", "gift", "hug", "care", "praise", "comfort"],
+    bondDec: ["hate", "despise", "betray", "lie", "threaten", "attack", "insult", "mock", "cold", "ignore", "steal", "abandon", "enemy", "disgust", "hostile", "strike"],
     romanceInc: ["kiss", "blush", "caress", "attracted", "holding hands", "crush", "date", "romantic", "gaze", "whisper", "sensual", "undress", "embrace", "love you", "heart race"],
     romanceDec: ["just friends", "stop", "pull away", "uninterested", "break up", "rejection", "turned off", "platonic"]
   }
 };
 
-// Common capitalized sentence starters to ignore during name detection
-const BANNED_CANDIDATE_WORDS = new Set([
+// Common capitalized sentence starters to ignore during candidate name detection
+var BANNED_CANDIDATE_WORDS = new Set([
   "The", "A", "An", "You", "Your", "He", "She", "They", "We", "It", "Suddenly",
   "Meanwhile", "Inside", "Outside", "Then", "After", "Before", "When", "There",
-  "Here", "What", "How", "Why", "Yes", "No", "Please", "Look", "Come", "Go"
+  "Here", "What", "How", "Why", "Yes", "No", "Please", "Look", "Come", "Go",
+  "Wait", "Stop", "Hello", "Goodbye", "Soon", "Finally", "Still", "Never", "Always"
 ]);
 
-const matchWord = (text, word) => {
-  const clean = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`\\b${clean}\\b`, 'i').test(text);
+var escapeRegex = function(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+// Negation-aware keyword matcher (prevents "don't trust" from counting as positive trust)
+var matchWordSafe = function(text, word) {
+  var clean = escapeRegex(word);
+  var regex = new RegExp(`(?<!\\b(?:not|never|no|don't|dont|cannot|can't|hardly)\\s+(?:really\\s+)?)\\b${clean}\\b`, 'i');
+  return regex.test(text);
 };
 
 // ==================== CORE ENGINE ====================
-const AttachLink = {
+var AttachLink = {
   init(state) {
     if (!state.attachLink) {
       state.attachLink = {
@@ -76,70 +84,114 @@ const AttachLink = {
     }
   },
 
-  // Collect all immediately recognized character names from Story Cards
-  getRecognizedCharacters() {
-    const names = new Set(AttachLinkConfig.MANUAL_CHARACTERS);
+  // Generates name variants/aliases for a character (e.g. "Marie Onette" -> ["Marie Onette", "Marie"])
+  getAliases(fullName) {
+    var clean = (fullName || "").trim();
+    if (!clean) return [];
+    var aliases = [clean];
+    var parts = clean.split(/\s+/);
+    if (parts.length > 1 && parts[0].length >= 3 && !BANNED_CANDIDATE_WORDS.has(parts[0])) {
+      aliases.push(parts[0]); // First name alias
+    }
+    return aliases;
+  },
 
-    if (AttachLinkConfig.autoDetectFromStoryCards && Array.isArray(storyCards)) {
-      for (const card of storyCards) {
-        if (card.type && card.type.toLowerCase() === "character" && card.title) {
-          const cleanName = card.title.split(/['’\s]/)[0].trim();
-          if (cleanName.length > 1 && !cleanName.includes("AttachLink")) {
-            names.add(cleanName);
+  // Collect all recognized character names from config and Story Cards safely
+  getRecognizedCharacters() {
+    var names = new Set((AttachLinkConfig.MANUAL_CHARACTERS || []).map(n => n.trim()).filter(Boolean));
+
+    if (AttachLinkConfig.autoDetectFromStoryCards && typeof storyCards !== 'undefined' && Array.isArray(storyCards)) {
+      for (var card of storyCards) {
+        if (!card || !card.title) continue;
+        var title = card.title.trim();
+
+        // 1. If it's an existing AttachLink card, extract the original character name
+        if (/AttachLink/i.test(title)) {
+          var match = title.match(/^(.+?)(?:'s)?\s*AttachLink/i);
+          if (match && match[1].trim()) {
+            names.add(match[1].trim());
           }
+          continue;
+        }
+
+        // 2. If it's a character card, keep the FULL multi-word name
+        var cardType = (card.type || "").toLowerCase();
+        var isExplicitChar = cardType === "character" || cardType === "person" || cardType === "npc";
+        var isLikelyChar = !cardType && card.entry && /\b(she|he|her|his|hers|him|they|them|woman|man|girl|boy|singer|hair|eyes|ears|tall)\b/i.test(card.entry);
+
+        if (isExplicitChar || isLikelyChar) {
+          names.add(title);
         }
       }
     }
     return names;
   },
 
-  // Initialize a character with a 100% neutral baseline
+  // Immediately generates and synchronizes AttachLink cards for all detected NPCs
+  syncAllStoryCards(state) {
+    if (typeof storyCards === 'undefined' || !Array.isArray(storyCards)) return;
+    this.init(state);
+    var recognized = this.getRecognizedCharacters();
+    for (var name of recognized) {
+      this.ensureCharacter(name, state);
+      this.syncStoryCard(state, name);
+    }
+  },
+
+  // Initialize a character with a neutral baseline & cognitive fields
   ensureCharacter(name, state) {
     this.init(state);
-    if (!state.attachLink.characters[name]) {
-      state.attachLink.characters[name] = {
-        name: name,
-        bond: 0,       // Stage 0: Neutral Acquaintance (-5 to +5)
-        romance: 0,    // Stage 0: Platonic (0 to 5)
-        thoughts: [],  // Monologue bank
-        coreMemory: "",// Permanent consolidated foundation
+    var cleanName = (name || "").trim();
+    if (!cleanName) return null;
+
+    if (!state.attachLink.characters[cleanName]) {
+      state.attachLink.characters[cleanName] = {
+        name: cleanName,
+        bond: 0,          // Stage 0: Neutral Acquaintance (-5 to +5)
+        romance: 0,       // Stage 0: Platonic (0 to 5)
+        mood: "Neutral",  // Dynamic emotional state / demeanor
+        agenda: "",       // NPC private agenda / secret goal
+        thoughts: [],     // Monologue buffer (cleared at consolidation)
+        coreMemory: "",   // Permanent consolidated foundation
         lastSeenAction: 0
       };
     }
-    return state.attachLink.characters[name];
+    return state.attachLink.characters[cleanName];
   },
 
   // Scans history for presence, manages anti-spam discovery and candidate decay
   resolveActiveCharacter(state, history) {
     this.init(state);
-    const currentAction = info.actionCount || 0;
-    const lookback = AttachLinkConfig.lookbackTurnsForPresence;
-    const recentHistory = Array.isArray(history) ? history.slice(-lookback) : [];
-    const textCorpus = recentHistory.map(h => (h.text || h.rawText || "")).join(" ");
-    const lowerCorpus = textCorpus.toLowerCase();
+    var currentAction = (typeof info !== 'undefined' && info.actionCount) ? info.actionCount : 0;
+    var lookback = AttachLinkConfig.lookbackTurnsForPresence;
+    var recentHistory = Array.isArray(history) ? history.slice(-lookback) : [];
+    var textCorpus = recentHistory.map(h => (h ? (h.text || h.rawText || "") : "")).join(" ");
+    var lowerCorpus = textCorpus.toLowerCase();
 
-    const recognized = this.getRecognizedCharacters();
+    var recognized = this.getRecognizedCharacters();
 
-    // 1. Scan for potential proper names
-    const potentialNames = textCorpus.match(/\b[A-Z][a-z]{2,15}\b/g) || [];
-    const seenThisTurn = new Set();
+    // 1. Scan for potential new NPC names (1-word or 2-word proper nouns)
+    var potentialNames = textCorpus.match(/\b[A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?\b/g) || [];
+    var seenThisTurn = new Set();
 
-    for (const rawName of potentialNames) {
-      if (BANNED_CANDIDATE_WORDS.has(rawName) || recognized.has(rawName)) continue;
-      seenThisTurn.add(rawName);
+    for (var rawName of potentialNames) {
+      var cleanName = rawName.trim();
+      var firstWord = cleanName.split(/\s+/)[0];
+      if (BANNED_CANDIDATE_WORDS.has(firstWord) || recognized.has(cleanName)) continue;
+      seenThisTurn.add(cleanName);
 
       // Increment sighting counter
-      state.attachLink.candidates[rawName] = (state.attachLink.candidates[rawName] || 0) + 1;
+      state.attachLink.candidates[cleanName] = (state.attachLink.candidates[cleanName] || 0) + 1;
 
       // When an unlisted NPC persists for the full threshold, promote them!
-      if (state.attachLink.candidates[rawName] >= AttachLinkConfig.NEW_NPC_SIGHTING_THRESHOLD) {
-        this.ensureCharacter(rawName, state);
-        delete state.attachLink.candidates[rawName];
+      if (state.attachLink.candidates[cleanName] >= AttachLinkConfig.NEW_NPC_SIGHTING_THRESHOLD) {
+        this.ensureCharacter(cleanName, state);
+        delete state.attachLink.candidates[cleanName];
       }
     }
 
     // 2. CANDIDATE DECAY: One-off side characters fade away if not actively present
-    for (const name in state.attachLink.candidates) {
+    for (var name in state.attachLink.candidates) {
       if (!seenThisTurn.has(name)) {
         state.attachLink.candidates[name]--;
         if (state.attachLink.candidates[name] <= 0) {
@@ -149,28 +201,40 @@ const AttachLink = {
     }
 
     // 3. Select the best active character currently in the scene
-    const allTracked = Object.keys(state.attachLink.characters).concat(Array.from(recognized));
-    const uniqueTracked = [...new Set(allTracked)];
-    if (uniqueTracked.length === 0) return null;
+    var allTracked = Object.keys(state.attachLink.characters).concat(Array.from(recognized));
+    var uniqueTracked = [...new Set(allTracked)].filter(Boolean);
+    if (uniqueTracked.length === 0) {
+      state.attachLink.activeChar = null;
+      return null;
+    }
 
-    let bestChar = null;
-    let highestScore = -999;
+    var bestChar = null;
+    var highestScore = -999;
 
-    for (const name of uniqueTracked) {
-      const charData = this.ensureCharacter(name, state);
-      const lower = name.toLowerCase();
-      const matches = (lowerCorpus.match(new RegExp(`\\b${lower}\\b`, "g")) || []).length;
+    for (var charName of uniqueTracked) {
+      var charData = this.ensureCharacter(charName, state);
+      var aliases = this.getAliases(charName);
+      
+      var matches = 0;
+      for (var alias of aliases) {
+        var lowerAlias = alias.toLowerCase();
+        var escaped = escapeRegex(lowerAlias);
+        var count = (lowerCorpus.match(new RegExp(`\\b${escaped}\\b`, "g")) || []).length;
+        matches += count;
+      }
 
       if (matches > 0) charData.lastSeenAction = currentAction;
-      const turnsSinceSeen = currentAction - (charData.lastSeenAction || 0);
+      var turnsSinceSeen = currentAction - (charData.lastSeenAction || 0);
 
       // Priority calculation: (Presence * 15) - (Absence Decay * 3)
-      let score = (matches * 15) - (turnsSinceSeen * 3);
-      if (AttachLinkConfig.MANUAL_CHARACTERS.includes(name)) score += 5;
+      var score = (matches * 15) - (turnsSinceSeen * 3);
+      if (AttachLinkConfig.MANUAL_CHARACTERS && AttachLinkConfig.MANUAL_CHARACTERS.includes(charName)) {
+        score += 5;
+      }
 
       if (score > highestScore && turnsSinceSeen <= 10) {
         highestScore = score;
-        bestChar = name;
+        bestChar = charName;
       }
     }
 
@@ -178,25 +242,34 @@ const AttachLink = {
     return bestChar;
   },
 
-  // Updates Bond (-5 to +5) and Romance (0 to 5) bidirectionally
-  updateMeters(text, state) {
+  // Apply LLM-generated reflection deltas directly (Primary Agentic Engine)
+  applyDeltas(state, charName, deltas) {
     this.init(state);
-    const active = state.attachLink.activeChar;
-    if (!active) return;
+    var charData = this.ensureCharacter(charName, state);
+    if (!charData || !deltas) return;
 
-    const charData = this.ensureCharacter(active, state);
-    const kw = AttachLinkConfig.keywords;
-
-    // Bond Track: Can increase to +5 or deteriorate to -5
-    if (kw.bondInc.some(w => matchWord(text, w)) && charData.bond < 5) charData.bond++;
-    if (kw.bondDec.some(w => matchWord(text, w)) && charData.bond > -5) charData.bond--;
-
-    // Romance Track: Advances only if bond is not hostile (Bond >= 0)
-    if (kw.romanceInc.some(w => matchWord(text, w)) && charData.bond >= 0 && charData.romance < 5) {
-      charData.romance++;
+    // Mood update
+    if (deltas.mood && typeof deltas.mood === 'string') {
+      var cleanMood = deltas.mood.trim();
+      if (cleanMood.length > 1 && cleanMood.length < 30) {
+        charData.mood = cleanMood.charAt(0).toUpperCase() + cleanMood.slice(1).toLowerCase();
+      }
     }
-    if (kw.romanceDec.some(w => matchWord(text, w)) && charData.romance > 0) {
-      charData.romance--;
+
+    // Bond delta (-5 to +5)
+    if (typeof deltas.bond === 'number' && !isNaN(deltas.bond)) {
+      charData.bond = Math.max(-5, Math.min(5, charData.bond + deltas.bond));
+    }
+
+    // Romance delta (0 to 5, only advances if Bond >= 0)
+    if (typeof deltas.romance === 'number' && !isNaN(deltas.romance)) {
+      if (deltas.romance > 0) {
+        if (charData.bond >= 0) {
+          charData.romance = Math.min(5, charData.romance + deltas.romance);
+        }
+      } else {
+        charData.romance = Math.max(0, charData.romance + deltas.romance);
+      }
     }
 
     // Severe hostility naturally deteriorates romance
@@ -205,17 +278,49 @@ const AttachLink = {
     }
   },
 
-  // Ultra-compact context injection
+  // Fallback: Updates Bond and Romance via negation-safe keyword scanning
+  updateMeters(text, state) {
+    this.init(state);
+    var active = state.attachLink.activeChar;
+    if (!active || !text) return;
+
+    var charData = this.ensureCharacter(active, state);
+    var kw = AttachLinkConfig.keywords;
+
+    // Bond Track: Can increase to +5 or deteriorate to -5
+    if (kw.bondInc.some(w => matchWordSafe(text, w)) && charData.bond < 5) charData.bond++;
+    if (kw.bondDec.some(w => matchWordSafe(text, w)) && charData.bond > -5) charData.bond--;
+
+    // Romance Track: Advances only if bond is not hostile (Bond >= 0)
+    if (kw.romanceInc.some(w => matchWordSafe(text, w)) && charData.bond >= 0 && charData.romance < 5) {
+      charData.romance++;
+    }
+    if (kw.romanceDec.some(w => matchWordSafe(text, w)) && charData.romance > 0) {
+      charData.romance--;
+    }
+
+    // Hostility checks
+    if (charData.bond <= -3 && charData.romance > 0) {
+      charData.romance = Math.max(0, charData.romance - 1);
+    }
+  },
+
+  // Prompt Context Injection
   getPromptContext(state) {
     this.init(state);
-    const active = state.attachLink.activeChar;
+    var active = state.attachLink.activeChar;
     if (!active) return "";
 
-    const charData = this.ensureCharacter(active, state);
-    const bondDesc = AttachLinkConfig.bondLevels[charData.bond.toString()];
-    const romanceDesc = AttachLinkConfig.romanceLevels[charData.romance.toString()];
+    var charData = this.ensureCharacter(active, state);
+    var bondDesc = AttachLinkConfig.bondLevels[charData.bond.toString()] || "Neutral";
+    var romanceDesc = AttachLinkConfig.romanceLevels[charData.romance.toString()] || "Platonic";
+    var moodDesc = charData.mood || "Neutral";
 
-    let summary = `[AttachLink: ${active} | Bond: ${charData.bond > 0 ? `+${charData.bond}` : charData.bond} (${bondDesc}) | Romance: ${charData.romance}/5 (${romanceDesc})]`;
+    var summary = `[AttachLink: ${active} | Mood: ${moodDesc} | Bond: ${charData.bond > 0 ? `+${charData.bond}` : charData.bond} (${bondDesc}) | Romance: ${charData.romance}/5 (${romanceDesc})]`;
+
+    if (charData.agenda) {
+      summary += `\n[${active}'s Secret Agenda: "${charData.agenda}"]`;
+    }
     if (charData.coreMemory) {
       summary += `\n[${active}'s Core Impression: "${charData.coreMemory}"]`;
     }
@@ -224,28 +329,36 @@ const AttachLink = {
 
   addThought(state, charName, thoughtText) {
     this.init(state);
-    const charData = this.ensureCharacter(charName, state);
-    const cleaned = thoughtText.trim().replace(/^["“']|["”']$/g, '');
+    var charData = this.ensureCharacter(charName, state);
+    var cleaned = thoughtText.trim().replace(/^["“']|["”']$/g, '');
     if (!cleaned || cleaned.length < 4) return;
 
     charData.thoughts.push(cleaned);
   },
 
-  // Synthesizes thoughts and clears the buffer back to 0
-  setConsolidatedMemory(state, charName, summaryText) {
+  // Synthesizes thoughts, updates Agenda, and resets the thought buffer to 0
+  setConsolidatedMemory(state, charName, summaryText, agendaText = "") {
     this.init(state);
-    const charData = this.ensureCharacter(charName, state);
-    const cleaned = summaryText.trim().replace(/^["“']|["”']$/g, '');
-    if (!cleaned || cleaned.length < 6) return;
+    var charData = this.ensureCharacter(charName, state);
+    var cleanedSummary = summaryText.trim().replace(/^["“']|["”']$/g, '');
+    if (cleanedSummary && cleanedSummary.length >= 6) {
+      charData.coreMemory = cleanedSummary;
+    }
 
-    charData.coreMemory = cleaned;
+    if (agendaText) {
+      var cleanedAgenda = agendaText.trim().replace(/^["“']|["”']$/g, '');
+      if (cleanedAgenda && cleanedAgenda.length >= 4) {
+        charData.agenda = cleanedAgenda;
+      }
+    }
+
     charData.thoughts = []; // Reset raw thoughts back to 0
   },
 
   renderBondBar(val) {
-    const neg = val < 0 ? "◄".repeat(Math.abs(val)) + "─".repeat(5 - Math.abs(val)) : "─────";
-    const pos = val > 0 ? "►".repeat(val) + "─".repeat(5 - val) : "─────";
-    const center = val === 0 ? "■" : "│";
+    var neg = val < 0 ? "◄".repeat(Math.abs(val)) + "─".repeat(5 - Math.abs(val)) : "─────";
+    var pos = val > 0 ? "►".repeat(val) + "─".repeat(5 - val) : "─────";
+    var center = val === 0 ? "■" : "│";
     return `[${neg} ${center} ${pos}]`;
   },
 
@@ -256,7 +369,7 @@ const AttachLink = {
   // Self-Building Manual for the Story Card's "NOTES" section (Consumes 0 prompt tokens!)
   buildCardNotes(charName) {
     return `📖 [ATTACHLINK USER GUIDE - ${charName.toUpperCase()}]\n` +
-      `Tracks ${charName}'s emotional bonds, standing, and subconscious monologues in real time.\n` +
+      `Tracks ${charName}'s emotional bonds, standing, inner thoughts, and agentic agenda in real time.\n` +
       `(Note: This Notes section is player-facing and consumes 0 AI prompt tokens!)\n\n` +
       `📊 RELATIONSHIP TRACKS & STAGES:\n\n` +
       `• Bond Spectrum (-5 Enemy ◄─ 0 Neutral ─► +5 Friend):\n` +
@@ -280,49 +393,71 @@ const AttachLink = {
       `   [5/5] Eternal Soulmates (Bound by true, unbreakable love)\n\n` +
       `🧠 5-THOUGHT CONSOLIDATION CYCLE:\n` +
       `• Thoughts accumulate from 1 to 5 as you interact.\n` +
-      `• At 5 thoughts, the AI synthesizes them into a permanent "Core Impression".\n` +
+      `• At 5 thoughts, the AI synthesizes them into a permanent "Core Impression" and updates their "Secret Agenda".\n` +
       `• The thoughts reset to 0 to keep the Story Card token-friendly.`;
   },
 
-  // Sync Story Card (Writes both Entry and Notes)
+  // Sync Story Card (Writes Entry and Notes safely across AID versions)
   syncStoryCard(state, charName) {
     if (typeof storyCards === 'undefined' || !Array.isArray(storyCards) || !charName) return;
 
-    const charData = this.ensureCharacter(charName, state);
-    const cardTitle = `${charName}'s AttachLink`;
+    var charData = this.ensureCharacter(charName, state);
+    var cardTitle = `${charName}'s AttachLink`;
 
-    const bondSign = charData.bond > 0 ? `+${charData.bond}` : charData.bond;
-    const bondDesc = AttachLinkConfig.bondLevels[charData.bond.toString()];
-    const romanceDesc = AttachLinkConfig.romanceLevels[charData.romance.toString()];
+    var bondSign = charData.bond > 0 ? `+${charData.bond}` : charData.bond;
+    var bondDesc = AttachLinkConfig.bondLevels[charData.bond.toString()] || "Neutral";
+    var romanceDesc = AttachLinkConfig.romanceLevels[charData.romance.toString()] || "Platonic";
+    var moodDesc = charData.mood || "Neutral";
 
-    let coreMemoryText = charData.coreMemory ? `Core Impression: "${charData.coreMemory}"\n\n` : "";
-    let thoughtsText = charData.thoughts.length > 0
+    var agendaText = charData.agenda ? `Secret Agenda: "${charData.agenda}"\n` : "";
+    var coreMemoryText = charData.coreMemory ? `Core Impression: "${charData.coreMemory}"\n` : "";
+    var thoughtsText = charData.thoughts.length > 0
       ? charData.thoughts.map((t, i) => `  ${i + 1}. "${t}"`).join("\n")
       : "  (Formulating initial impressions...)";
 
-    const cardContent = `[${cardTitle} - Relationship Status]\n` +
+    var cardContent = `[${cardTitle} - Relationship Status]\n` +
+      `• Mood: ${moodDesc}\n` +
       `• Bond: ${this.renderBondBar(charData.bond)} (${bondSign}) ${bondDesc}\n` +
       `• Romance: ${this.renderRomanceBar(charData.romance)} (${charData.romance}/5) ${romanceDesc}\n\n` +
-      `${coreMemoryText}Recent Thoughts (${charData.thoughts.length}/5):\n` +
+      agendaText +
+      coreMemoryText +
+      `\nRecent Thoughts (${charData.thoughts.length}/5):\n` +
       `${thoughtsText}\n\n` +
-      `(At 5 thoughts, memories auto-summarize into Core Impression)`;
+      `(At 5 thoughts, memories auto-summarize into Core Impression & Agenda)`;
 
-    const cardNotes = this.buildCardNotes(charName);
-    const keys = `${charName}, ${cardTitle}, AttachLink, relationship, mind`;
-    const type = "Character";
+    var cardNotes = this.buildCardNotes(charName);
+    var aliases = this.getAliases(charName);
+    var keys = `${aliases.join(", ")}, ${cardTitle}, AttachLink, relationship, mind`;
+    var type = "Character";
 
-    let index = storyCards.findIndex(c => c.title === cardTitle || c.name === cardTitle);
+    var index = storyCards.findIndex(c => c && (c.title === cardTitle || c.name === cardTitle));
     if (index !== -1) {
       if (typeof updateStoryCard === 'function') {
         try { updateStoryCard(index, keys, cardContent, type, cardTitle, cardNotes); }
-        catch (e) { updateStoryCard(index, keys, cardContent, type); }
+        catch (e) { try { updateStoryCard(index, keys, cardContent, type); } catch (e2) {} }
       }
-      storyCards[index].entry = cardContent;
-      storyCards[index].description = cardNotes; // Direct assignment ensures Notes update
+      if (storyCards[index]) {
+        storyCards[index].entry = cardContent;
+        storyCards[index].description = cardNotes;
+        storyCards[index].notes = cardNotes; // Supports Phoenix and legacy property names
+      }
     } else {
       if (typeof addStoryCard === 'function') {
         try { addStoryCard(keys, cardContent, type, cardTitle, cardNotes); }
-        catch (e) { addStoryCard(keys, cardContent, type); }
+        catch (e) { try { addStoryCard(keys, cardContent, type); } catch (e2) {} }
+      }
+      // If addStoryCard did not synchronously push to the local storyCards array, push safely
+      var afterIndex = storyCards.findIndex(c => c && (c.title === cardTitle || c.name === cardTitle));
+      if (afterIndex === -1) {
+        storyCards.push({
+          title: cardTitle,
+          name: cardTitle,
+          keys: keys,
+          entry: cardContent,
+          type: type,
+          description: cardNotes,
+          notes: cardNotes
+        });
       }
     }
   }
@@ -331,16 +466,24 @@ const AttachLink = {
 // ==================== CONTEXT BUDGET & CLEANER ====================
 
 // 1. Trims oldest story history if context exceeds token budget
-AttachLink.fitContext = (text, extraCharsNeeded = 200) => {
-  const maxLimit = Math.max((info.maxChars || 3500) - extraCharsNeeded - 50, 1500);
+AttachLink.fitContext = function(text, extraCharsNeeded = 300) {
+  if (!text) return "";
+  var maxLimit = Math.max((typeof info !== 'undefined' && info.maxChars ? info.maxChars : 3500) - extraCharsNeeded - 50, 1500);
   if (text.length <= maxLimit) return text;
 
-  const excess = text.length - maxLimit;
-  const cutIndex = text.indexOf("\n\n", excess);
+  var excess = text.length - maxLimit;
+  var cutIndex = text.indexOf("\n\n", excess);
   return cutIndex !== -1 ? text.slice(cutIndex + 2) : text.slice(excess);
 };
 
-// 2. Cleans leftover thought traces from recent story so AI never copies them
-AttachLink.cleanContextLeaks = (text) => {
-  return text.replace(/(?:^|\n)\s*[\(\[\*]*\s*[a-zA-Z]+(?:'s)?\s*AttachLink(?:\s*(?:Consolidation|Summary))?\s*[:=\-][^\n]*\n*/gi, "\n\n").trim();
+// 2. Multi-word leak cleaner: completely wipes leftover thought traces from text
+AttachLink.cleanContextLeaks = function(text) {
+  if (!text) return "";
+  return text.replace(/(?:^|\n)\s*[\(\[\*]*\s*[^:\n\r]+?(?:'s)?\s*AttachLink(?:\s*(?:Consolidation|Summary))?\s*[:=\-][^\n]*\n*/gi, "\n\n").trim();
 };
+
+// Ensure globals are exported on globalThis
+if (typeof globalThis !== 'undefined') {
+  globalThis.AttachLinkConfig = AttachLinkConfig;
+  globalThis.AttachLink = AttachLink;
+}
