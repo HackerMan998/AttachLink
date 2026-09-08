@@ -6,68 +6,67 @@ var modifier = (text) => {
       return { text: cleanedText };
     }
 
-    // 1. Check for Summary Consolidation: (Name's AttachLink Summary: "..." | Agenda: "...")
-    const summaryPattern = /(?:^|\n)\s*[\(\[\*]*\s*([^:\n\r]+?)(?:'s)?\s*AttachLink\s*(?:Summary|Consolidation)\s*[:=\-]\s*([^\n\r]+?)[\)\]\*]*(?:\n+|$)/i;
-    const summaryMatch = cleanedText.match(summaryPattern);
-
-    if (summaryMatch) {
-      const charName = summaryMatch[1].trim();
-      const payload = summaryMatch[2].trim();
-
-      // Extract core summary (first part before pipe or entire text)
-      const parts = payload.split('|');
-      const summaryText = parts[0].trim().replace(/^["“']|["”']$/g, '');
-
-      // Extract optional Agenda
-      const agendaMatch = payload.match(/Agenda\s*[:=\-]\s*["“']?([^"”\n\r|]+?)["”']?(?:$|[|,\)])/i);
-      const agendaText = agendaMatch ? agendaMatch[1].trim() : "";
-
-      AttachLink.setConsolidatedMemory(state, charName, summaryText, agendaText);
-      cleanedText = cleanedText.replace(summaryMatch[0], "").trimStart();
-    } else {
-      // 2. Check for Regular Thought: (Name's AttachLink: "..." | Mood: ... | Bond: ... | Romance: ...)
+    // 1. Handle Automatic Pause Menu (Reflection Turn)
+    if (state.attachLink && state.attachLink.isReflecting) {
+      const charName = state.attachLink.reflectingCharacter;
+      
       const thoughtPattern = /(?:^|\n)\s*[\(\[\*]*\s*([^:\n\r]+?)(?:'s)?\s*AttachLink\s*[:=\-]\s*([^\n\r]+?)[\)\]\*]*(?:\n+|$)/i;
       const thoughtMatch = cleanedText.match(thoughtPattern);
 
       if (thoughtMatch) {
-        const charName = thoughtMatch[1].trim();
         const payload = thoughtMatch[2].trim();
-
-        // Extract raw thought (before any pipe indicators)
         const parts = payload.split('|');
         const rawThought = parts[0].trim().replace(/^["“']|["”']$/g, '');
-
-        AttachLink.addThought(state, charName, rawThought);
-
-        // Extract Agentic Deltas & Mood
-        const moodMatch = payload.match(/Mood\s*[:=\-]\s*["“']?([a-zA-Z\s]+?)["”']?(?:$|[|,\)])/i);
-        const bondMatch = payload.match(/Bond\s*[:=\-]\s*([+\-]?\d+)/i);
-        const romanceMatch = payload.match(/Romance\s*[:=\-]\s*([+\-]?\d+)/i);
-
-        let hasExplicitDeltas = false;
-        const deltas = {};
-
-        if (moodMatch) {
-          deltas.mood = moodMatch[1].trim();
+        
+        if (rawThought && rawThought.length >= 4) {
+          const charData = AttachLink.ensureCharacter(charName, state);
+          charData.coreMemory = rawThought;
         }
+
+        const agendaMatch = payload.match(/Agenda\s*[:=\-]\s*["“']?([^"”\n\r|]+?)["”']?(?:$|[|,\)])/i);
+        if (agendaMatch) {
+          const charData = AttachLink.ensureCharacter(charName, state);
+          const agendaText = agendaMatch[1].trim();
+          if (agendaText && agendaText.length >= 4) charData.agenda = agendaText;
+        }
+
+        const moodMatch = payload.match(/Mood\s*[:=\-]\s*["“']?([a-zA-Z\s]+?)["”']?(?:$|[|,\)])/i);
+        const bondMatch = payload.match(/Bond\s*[:=\-]\s*([=+\-]?\d+)/i);
+        const romanceMatch = payload.match(/Romance\s*[:=\-]\s*([=+\-]?\d+)/i);
+
+        const deltas = {};
+        if (moodMatch) deltas.mood = moodMatch[1].trim();
         if (bondMatch) {
-          deltas.bond = parseInt(bondMatch[1], 10);
-          hasExplicitDeltas = true;
+          const raw = bondMatch[1].trim();
+          if (raw.startsWith("+") || raw.startsWith("-")) {
+            deltas.bond = parseInt(raw, 10);
+            deltas.isAbsoluteBond = false;
+          } else {
+            deltas.bond = parseInt(raw.replace(/^=/, ''), 10);
+            deltas.isAbsoluteBond = true;
+          }
         }
         if (romanceMatch) {
-          deltas.romance = parseInt(romanceMatch[1], 10);
-          hasExplicitDeltas = true;
+          const raw = romanceMatch[1].trim();
+          if (raw.startsWith("+") || raw.startsWith("-")) {
+            deltas.romance = parseInt(raw, 10);
+            deltas.isAbsoluteRomance = false;
+          } else {
+            deltas.romance = parseInt(raw.replace(/^=/, ''), 10);
+            deltas.isAbsoluteRomance = true;
+          }
         }
 
-        if (hasExplicitDeltas || deltas.mood) {
-          AttachLink.applyDeltas(state, charName, deltas);
-        } else {
-          // Fallback to keyword scanning if the model omitted deltas
-          AttachLink.updateMeters(cleanedText, state);
-        }
-
-        cleanedText = cleanedText.replace(thoughtMatch[0], "").trimStart();
+        AttachLink.applyDeltas(state, charName, deltas);
       }
+
+      // Reset reflection state
+      state.attachLink.turnsSinceReflection = 0;
+      state.attachLink.isReflecting = false;
+      state.attachLink.reflectingCharacter = null;
+      
+      // Override output with pause message
+      cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "The characters are"} reflecting on your actions... Relationship updated! Please press continue to resume the story. <<<\n`;
     }
 
     // Secondary leak cleaner pass to guarantee zero immersion breaks

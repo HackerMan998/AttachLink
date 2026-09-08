@@ -14,9 +14,8 @@ var AttachLinkConfig = {
   // 3. Automation Settings
   autoDetectFromStoryCards: true, // Existing character cards are tracked immediately
   autoGenerateStoryCardsForExistingNPCs: true, // Immediately generate companion AttachLink cards for all detected NPCs
-  thoughtChancePercent: 65,      // % chance per turn for active NPC to form a thought
+  reflectionCooldown: 15,        // Turns before an automatic relationship reflection pause
   lookbackTurnsForPresence: 5,   // Actions back to check who is active in the scene
-  MAX_THOUGHTS_BEFORE_SUMMARY: 5, // Triggers automatic memory consolidation at 5 thoughts
 
   // 4. 🎮 RELATIONSHIP PIPELINE CONFIGURATION
   // Friendship Spectrum (-5 Enemy ◄─ 0 Neutral ─► +5 Friend)
@@ -42,14 +41,6 @@ var AttachLinkConfig = {
     "3": "Lovers / Partners (Passionate romance & open affection)",
     "4": "Deep Devotion (Intense love & committed intimacy)",
     "5": "Eternal Soulmates (Bound by true, unbreakable love)"
-  },
-
-  // Keywords that adjust relationship as fallback when LLM deltas are omitted
-  keywords: {
-    bondInc: ["friend", "trust", "help", "protect", "save", "smile", "laugh", "thank", "kind", "honest", "promise", "safe", "gift", "hug", "care", "praise", "comfort"],
-    bondDec: ["hate", "despise", "betray", "lie", "threaten", "attack", "insult", "mock", "cold", "ignore", "steal", "abandon", "enemy", "disgust", "hostile", "strike"],
-    romanceInc: ["kiss", "blush", "caress", "attracted", "holding hands", "crush", "date", "romantic", "gaze", "whisper", "sensual", "undress", "embrace", "love you", "heart race"],
-    romanceDec: ["just friends", "stop", "pull away", "uninterested", "break up", "rejection", "turned off", "platonic"]
   }
 };
 
@@ -65,12 +56,17 @@ var escapeRegex = function(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
 
-// Negation-aware keyword matcher (prevents "don't trust" from counting as positive trust)
-var matchWordSafe = function(text, word) {
-  var clean = escapeRegex(word);
-  var regex = new RegExp(`(?<!\\b(?:not|never|no|don't|dont|cannot|can't|hardly)\\s+(?:really\\s+)?)\\b${clean}\\b`, 'i');
-  return regex.test(text);
-};
+// Common non-character card types (100% scenario-neutral)
+var NON_CHARACTER_CARD_TYPES = new Set([
+  "location", "place", "area", "room", "building", "city", "world", "setting",
+  "concept", "idea", "lore", "rule", "rules", "system", "mechanic", "protocol",
+  "item", "object", "thing", "weapon", "armor", "equipment", "artifact",
+  "vehicle", "faction", "group", "organization", "guild", "event", "quest"
+]);
+
+var CHARACTER_CARD_TYPES = new Set([
+  "character", "person", "npc", "companion", "creature", "monster", "party"
+]);
 
 // ==================== CORE ENGINE ====================
 var AttachLink = {
@@ -80,16 +76,48 @@ var AttachLink = {
         characters: {},  // Active tracked characters with cards
         candidates: {},  // Sightings buffer for new, unverified NPCs
         activeChar: null,
-        bootstrapped: false // One-shot flag: create cards for all pre-existing NPC story cards
+        bootstrapped: false, // One-shot flag: create cards for all pre-existing NPC story cards
+        turnsSinceReflection: 0,
+        isReflecting: false,
+        reflectingCharacter: null
       };
     }
 
-    // On very first run, immediately generate AttachLink cards for all named NPCs
-    // that already have story cards (physical description, personality, etc.)
+    // Always purge any erroneously created non-character cards (locations, concepts, items)
+    this.cleanupInvalidAttachLinkCards(state);
+
+    // On very first run, immediately generate AttachLink cards for all named character NPCs
     if (!state.attachLink.bootstrapped) {
       state.attachLink.bootstrapped = true;
       this.bootstrapExistingNPCs(state);
     }
+  },
+
+  // Determines if a story card represents an actual character (100% scenario-neutral)
+  isCharacterCard(card) {
+    if (!card || !card.title) return false;
+    var title = card.title.trim();
+
+    // Never treat an AttachLink card itself as a base character card
+    if (/AttachLink/i.test(title)) return false;
+
+    // 1. Strict Type Check: If the card has ANY type, it MUST be a character type.
+    // Any other type ("location", "item", "lore", "faction", etc.) is strictly skipped!
+    var cardType = (card.type || "").toLowerCase().trim();
+    if (cardType) {
+      return cardType === "character" || cardType === "person" || cardType === "npc" || cardType === "companion";
+    }
+
+    // 2. Untyped Cards: Fallback only if type is completely blank/missing
+    var entryText = (card.entry || card.value || card.description || "").trim();
+    if (entryText.length > 30) {
+      var hasPronounSubject = /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+is\s+(?:the|a|an)\b/i.test(entryText) &&
+        /\b(she|he|they|woman|man|girl|boy|singer|dancer|performer|warrior|mage|guard|worker|host|hostess)\b/i.test(entryText);
+      var hasAppearanceStats = /\b(?:stands\s+\d+\s*(?:feet|ft|'|inches|in|cm)|weighs\s+\d+\s*(?:pounds|lbs|kg))\b/i.test(entryText);
+      return hasPronounSubject || hasAppearanceStats;
+    }
+
+    return false;
   },
 
   // Generates name variants/aliases for a character (e.g. "Marie Onette" -> ["Marie Onette", "Marie"])
@@ -109,39 +137,101 @@ var AttachLink = {
     var names = new Set((AttachLinkConfig.MANUAL_CHARACTERS || []).map(n => n.trim()).filter(Boolean));
 
     if (AttachLinkConfig.autoDetectFromStoryCards && typeof storyCards !== 'undefined' && Array.isArray(storyCards)) {
+      // Collect known non-character card titles to prevent false positive matches
+      var knownNonCharTitles = new Set();
+      for (var card of storyCards) {
+        if (!card || !card.title) continue;
+        var t = card.title.trim().toLowerCase();
+        var cType = (card.type || "").toLowerCase().trim();
+        if (cType && cType !== "character" && cType !== "person" && cType !== "npc" && cType !== "companion") {
+          knownNonCharTitles.add(t);
+        }
+      }
+
       for (var card of storyCards) {
         if (!card || !card.title) continue;
         var title = card.title.trim();
 
-        // 1. If it's an existing AttachLink card, extract the original character name
+        // 1. Check existing AttachLink cards: extract character name only if valid
         if (/AttachLink/i.test(title)) {
-          var match = title.match(/^(.+?)(?:'s)?\s*AttachLink/i);
+          var match = title.match(/^(.+?)(?:'s|’s|\s)+AttachLink/i) || title.match(/^(.+?)\s*AttachLink/i);
           if (match && match[1].trim()) {
-            names.add(match[1].trim());
+            var candidate = match[1].replace(/['’]s$/i, '').trim();
+            if (!knownNonCharTitles.has(candidate.toLowerCase())) {
+              var hasCharCard = storyCards.some(c => c && c.title && !/AttachLink/i.test(c.title) && c.title.trim().toLowerCase() === candidate.toLowerCase() && this.isCharacterCard(c));
+              var isManual = AttachLinkConfig.MANUAL_CHARACTERS && AttachLinkConfig.MANUAL_CHARACTERS.includes(candidate);
+              if (hasCharCard || isManual) {
+                names.add(candidate);
+              }
+            }
           }
           continue;
         }
 
-        // 2. If it's a character card, keep the FULL multi-word name
-        var cardType = (card.type || "").toLowerCase();
-        var isExplicitChar = cardType === "character" || cardType === "person" || cardType === "npc";
-
-        // Heuristic: no type set but entry reads like a character description.
-        // Deliberately broad to catch cards like "Frenni Fazclaire" which may not
-        // have type="character" but clearly describe a named person.
-        var entryText = (card.entry || card.description || "");
-        var isLikelyChar = !isExplicitChar && entryText.length > 30 &&
-          /\b(she|he|her|his|hers|him|they|them|woman|man|girl|boy|named|wears|stands|weighs|hair|eyes|ears|tall|inches|feet|pounds|personality|charismatic|introverted|extroverted|shy|confident|kind|cruel|brave|singer|manager|guard|servant|lord|lady|doctor|professor)\b/i.test(entryText);
-
-        // Also catch any card whose title is a Proper Name(s) with a non-trivial entry
-        var titleLooksLikeName = /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}$/.test(title) && entryText.length > 20;
-
-        if (isExplicitChar || isLikelyChar || titleLooksLikeName) {
+        // 2. Only accept cards that represent real characters (strictly skips locations, items, etc.)
+        if (this.isCharacterCard(card)) {
           names.add(title);
         }
       }
     }
     return names;
+  },
+
+  // Automatically purges erroneously created AttachLink cards for locations, concepts, and items
+  cleanupInvalidAttachLinkCards(state) {
+    if (typeof storyCards === 'undefined' || !Array.isArray(storyCards)) return;
+
+    for (var i = storyCards.length - 1; i >= 0; i--) {
+      var card = storyCards[i];
+      if (!card || !card.title || !/AttachLink/i.test(card.title)) continue;
+
+      var match = card.title.match(/^(.+?)(?:'s|’s|\s)+AttachLink/i) || card.title.match(/^(.+?)\s*AttachLink/i);
+      if (!match || !match[1].trim()) continue;
+
+      var charName = match[1].replace(/['’]s$/i, '').trim();
+
+      // If explicitly specified in MANUAL_CHARACTERS, preserve it
+      if (AttachLinkConfig.MANUAL_CHARACTERS && AttachLinkConfig.MANUAL_CHARACTERS.includes(charName)) {
+        continue;
+      }
+
+      // Check if there is a base card that is explicitly NOT a character
+      var baseCard = storyCards.find(c => c && c.title && !/AttachLink/i.test(c.title) && c.title.trim().toLowerCase() === charName.toLowerCase());
+
+      var isInvalid = false;
+      if (baseCard) {
+        var baseType = (baseCard.type || "").toLowerCase().trim();
+        if (baseType && baseType !== "character" && baseType !== "person" && baseType !== "npc" && baseType !== "companion") {
+          isInvalid = true;
+        } else if (!this.isCharacterCard(baseCard)) {
+          isInvalid = true;
+        }
+      } else {
+        // If no base card exists and title contains clear place/system keywords, mark as invalid
+        if (/\b(room|suite|den|lounge|chamber|bar|patio|deck|vault|stage|dock|docks|bay|wing|penthouse|building|hall|corridor|street|city|district|forest|cave|mountain|rules|policy|system|protocol|bot|bots)\b/i.test(charName)) {
+          isInvalid = true;
+        }
+      }
+
+      if (isInvalid) {
+        // Purge from state tracking
+        if (state && state.attachLink) {
+          if (state.attachLink.characters) delete state.attachLink.characters[charName];
+          if (state.attachLink.candidates) delete state.attachLink.candidates[charName];
+          if (state.attachLink.activeChar === charName) state.attachLink.activeChar = null;
+        }
+
+        // Delete from storyCards array and call AID API if available
+        if (typeof removeStoryCard === 'function') {
+          try { removeStoryCard(i); } catch (e) {}
+        } else if (typeof deleteStoryCard === 'function') {
+          try { deleteStoryCard(i); } catch (e) {}
+        }
+        if (storyCards[i] === card) {
+          storyCards.splice(i, 1);
+        }
+      }
+    }
   },
 
   // Checks if a character's AttachLink story card already exists
@@ -151,15 +241,219 @@ var AttachLink = {
     return storyCards.some(c => c && (c.title === cardTitle || c.name === cardTitle));
   },
 
+  // Extracts Plot Essentials / Memory across all AI Dungeon versions & cards
+  getPlotEssentials(state) {
+    var essentials = [];
+    if (state && state.memory) {
+      if (typeof state.memory === 'string' && state.memory.trim()) {
+        essentials.push(state.memory.trim());
+      } else if (typeof state.memory === 'object') {
+        if (state.memory.context) essentials.push(state.memory.context);
+        if (state.memory.memory) essentials.push(state.memory.memory);
+        if (state.memory.plotEssentials) essentials.push(state.memory.plotEssentials);
+      }
+    }
+    if (typeof info !== 'undefined' && info && info.memory && typeof info.memory === 'string') {
+      essentials.push(info.memory.trim());
+    }
+    // Scan storyCards for any card explicitly dedicated to Plot Essentials or Memory
+    if (typeof storyCards !== 'undefined' && Array.isArray(storyCards)) {
+      for (var card of storyCards) {
+        if (!card || !card.title) continue;
+        if (/plot\s*essential|scenario\s*lore|world\s*info|adventure\s*memory/i.test(card.title)) {
+          var txt = card.entry || card.value || card.description || "";
+          if (txt) essentials.push(txt.trim());
+        }
+      }
+    }
+    return essentials.join("\n\n").trim();
+  },
+
+  // Extracts opening scenario prompt from history
+  getOpeningScenario(history) {
+    if (Array.isArray(history) && history.length > 0) {
+      var first = history[0];
+      return (first ? (first.text || first.rawText || "") : "").trim();
+    }
+    return "";
+  },
+
+  // Finds base character card (excluding companion AttachLink cards)
+  getBaseCharacterCard(charName) {
+    if (typeof storyCards === 'undefined' || !Array.isArray(storyCards) || !charName) return null;
+    var lower = charName.toLowerCase().trim();
+    return storyCards.find(c => {
+      if (!c || !c.title) return false;
+      var t = c.title.toLowerCase().trim();
+      return !/attachlink/i.test(t) && (t === lower || (c.keys && c.keys.toLowerCase().includes(lower)));
+    }) || null;
+  },
+
+  // Scans opening scenario, plot essentials, and character cards to infer established lore relationship
+  inferInitialRelationship(charName, state, history) {
+    var baseCard = this.getBaseCharacterCard(charName);
+    var cardText = baseCard ? (baseCard.entry || baseCard.value || baseCard.description || "") : "";
+    var essentialsText = this.getPlotEssentials(state);
+    var openingText = this.getOpeningScenario(history);
+
+    var corpus = `${cardText}\n${essentialsText}\n${openingText}`.toLowerCase();
+    var aliases = this.getAliases(charName).map(a => a.toLowerCase());
+    
+    // Check if the corpus mentions the character in connection with key relational markers
+    var hasCharMention = aliases.some(a => corpus.includes(a)) || (cardText.trim().length > 0);
+
+    var result = {
+      bond: 0,
+      romance: 0,
+      mood: "Neutral",
+      coreMemory: "",
+      agenda: "",
+      inferred: false
+    };
+
+    if (!hasCharMention && !cardText) {
+      return result;
+    }
+
+    var matchesPattern = function(regex) {
+      return (cardText && regex.test(cardText)) || (essentialsText && regex.test(essentialsText)) || (openingText && regex.test(openingText));
+    };
+
+    // 1. Spousal / Married / Engaged
+    if (matchesPattern(/\b(wife|husband|spouse|fianc[eé]e?|bride|groom|married to you|your wife|your husband)\b/i)) {
+      result.bond = 4;
+      result.romance = 4;
+      result.mood = "Loving";
+      result.coreMemory = `Established in scenario lore as your spouse/partner.`;
+      result.inferred = true;
+      return result;
+    }
+
+    // 2. Dating / Lovers / Romantic Partners
+    if (matchesPattern(/\b(girlfriend|boyfriend|lover|dating you|dating each other|in love with you|your girlfriend|your boyfriend|romantic partner|sweetheart)\b/i)) {
+      result.bond = 3;
+      result.romance = 3;
+      result.mood = "Affectionate";
+      result.coreMemory = `Established in scenario lore as dating / romantically involved with you.`;
+      result.inferred = true;
+      return result;
+    }
+
+    // 3. Crush / Mutual Flirtation / Attraction
+    if (matchesPattern(/\b(crush on you|attracted to you|flirting with you|desires you|infatuated with you)\b/i)) {
+      result.bond = 2;
+      result.romance = 2;
+      result.mood = "Flustered";
+      result.coreMemory = `Established in scenario lore with mutual attraction / feelings for you.`;
+      result.inferred = true;
+      return result;
+    }
+
+    // 4. Best Friend / Inseparable / Lifelong Ally
+    if (matchesPattern(/\b(best friend|childhood friend|closest friend|inseparable friend|lifelong friend)\b/i)) {
+      result.bond = 4;
+      result.romance = 0;
+      result.mood = "Friendly";
+      result.coreMemory = `Established in scenario lore as your best / childhood friend.`;
+      result.inferred = true;
+      return result;
+    }
+
+    // 5. Family / Relatives
+    if (matchesPattern(/\b(sister|brother|mother|father|daughter|son|your sibling|family)\b/i)) {
+      result.bond = 3;
+      result.romance = 0;
+      result.mood = "Warm";
+      result.coreMemory = `Established in scenario lore as part of your family.`;
+      result.inferred = true;
+      return result;
+    }
+
+    // 6. Devoted / Servant / Submissive
+    if (matchesPattern(/\b(devoted to you|obedient to you|your servant|your maid|your slave|servant of yours)\b/i)) {
+      result.bond = 3;
+      result.romance = 1;
+      result.mood = "Devoted";
+      result.coreMemory = `Established in scenario lore as loyal and devoted to you.`;
+      result.inferred = true;
+      return result;
+    }
+
+    // 7. Good Friend / Companion / Ally
+    if (matchesPattern(/\b(close friend|good friend|companion|trusted ally|comrade|trusted partner)\b/i)) {
+      result.bond = 2;
+      result.romance = 0;
+      result.mood = "Cordial";
+      result.coreMemory = `Established in scenario lore as a trusted friend and ally.`;
+      result.inferred = true;
+      return result;
+    }
+
+    // 8. Co-worker / Business Partner / Colleague
+    if (matchesPattern(/\b(co-worker|coworker|business partner|co-manager|colleague|employee|co-owner)\b/i)) {
+      result.bond = 1;
+      result.romance = 0;
+      result.mood = "Professional";
+      result.coreMemory = `Established in scenario lore as your professional coworker / partner.`;
+      result.inferred = true;
+      return result;
+    }
+
+    // 9. Nemesis / Sworn Enemy
+    if (matchesPattern(/\b(nemesis|arch-enemy|deadly foe|sworn enemy|mortal enemy|lethal enemy)\b/i)) {
+      result.bond = -4;
+      result.romance = 0;
+      result.mood = "Hostile";
+      result.coreMemory = `Established in scenario lore as your bitter sworn enemy.`;
+      result.inferred = true;
+      return result;
+    }
+
+    // 10. Enemy / Hostile
+    if (matchesPattern(/\b(enemy|hates you|despises you|hostile towards you|opponent|antagonist)\b/i)) {
+      result.bond = -3;
+      result.romance = 0;
+      result.mood = "Cold";
+      result.coreMemory = `Established in scenario lore as hostile towards you.`;
+      result.inferred = true;
+      return result;
+    }
+
+    // 11. Rival / Competitor
+    if (matchesPattern(/\b(rival|competitor|distrusts you|suspicious of you|wary of you)\b/i)) {
+      result.bond = -1;
+      result.romance = 0;
+      result.mood = "Guarded";
+      result.coreMemory = `Established in scenario lore as your competitor / rival.`;
+      result.inferred = true;
+      return result;
+    }
+
+    return result;
+  },
+
   // One-shot boot: generates AttachLink cards for ALL NPCs that already have story cards.
   // This runs automatically the very first time AttachLink initialises in a scenario,
-  // giving every pre-existing named NPC (e.g. Frenni Fazclaire) an instant tracking card.
+  // reading opening prompt, plot essentials, and character cards to calibrate relationships!
   bootstrapExistingNPCs(state) {
     if (typeof storyCards === 'undefined' || !Array.isArray(storyCards)) return;
 
+    this.cleanupInvalidAttachLinkCards(state);
+
+    var historyRef = (typeof history !== 'undefined') ? history : [];
     var recognized = this.getRecognizedCharacters();
     for (var name of recognized) {
-      this.ensureCharacter(name, state);
+      var charData = this.ensureCharacter(name, state);
+      if (!charData.initialized) {
+        var inferred = this.inferInitialRelationship(name, state, historyRef);
+        if (inferred && inferred.inferred) {
+          charData.bond = inferred.bond;
+          charData.romance = inferred.romance;
+          charData.mood = inferred.mood;
+          charData.coreMemory = inferred.coreMemory;
+        }
+        charData.initialized = true;
+      }
       // Only write the card if it doesn't already exist (preserves player edits)
       if (!this.attachLinkCardExists(name)) {
         this.syncStoryCard(state, name);
@@ -191,9 +485,10 @@ var AttachLink = {
         romance: 0,       // Stage 0: Platonic (0 to 5)
         mood: "Neutral",  // Dynamic emotional state / demeanor
         agenda: "",       // NPC private agenda / secret goal
-        thoughts: [],     // Monologue buffer (cleared at consolidation)
+        thoughts: [],     // Monologue buffer
         coreMemory: "",   // Permanent consolidated foundation
-        lastSeenAction: 0
+        lastSeenAction: 0,
+        initialized: false
       };
     }
     return state.attachLink.characters[cleanName];
@@ -218,6 +513,18 @@ var AttachLink = {
       var cleanName = rawName.trim();
       var firstWord = cleanName.split(/\s+/)[0];
       if (BANNED_CANDIDATE_WORDS.has(firstWord) || recognized.has(cleanName)) continue;
+
+      // Reject candidates matching known non-character story cards (locations, concepts, etc.)
+      if (typeof storyCards !== 'undefined' && Array.isArray(storyCards)) {
+        var isKnownNonChar = storyCards.some(c => c && c.title && NON_CHARACTER_CARD_TYPES.has((c.type || "").toLowerCase().trim()) && c.title.trim().toLowerCase() === cleanName.toLowerCase());
+        if (isKnownNonChar) continue;
+      }
+
+      // Reject candidates that contain obvious non-person tokens (rooms, bars, vaults, etc.)
+      if (/\b(room|suite|den|lounge|chamber|bar|patio|deck|vault|stage|dock|docks|bay|wing|penthouse|building|hall|corridor|street|city|district|forest|cave|mountain|rules|policy|system|protocol|bot|bots)\b/i.test(cleanName)) {
+        continue;
+      }
+
       seenThisTurn.add(cleanName);
 
       // Increment sighting counter
@@ -282,7 +589,7 @@ var AttachLink = {
     return bestChar;
   },
 
-  // Apply LLM-generated reflection deltas directly (Primary Agentic Engine)
+  // Apply LLM-generated reflection deltas or absolute sets directly (Primary Agentic Engine)
   applyDeltas(state, charName, deltas) {
     this.init(state);
     var charData = this.ensureCharacter(charName, state);
@@ -296,50 +603,31 @@ var AttachLink = {
       }
     }
 
-    // Bond delta (-5 to +5)
+    // Bond (-5 to +5): supports absolute set or delta adjustment
     if (typeof deltas.bond === 'number' && !isNaN(deltas.bond)) {
-      charData.bond = Math.max(-5, Math.min(5, charData.bond + deltas.bond));
+      if (deltas.isAbsoluteBond) {
+        charData.bond = Math.max(-5, Math.min(5, deltas.bond));
+      } else {
+        charData.bond = Math.max(-5, Math.min(5, charData.bond + deltas.bond));
+      }
     }
 
-    // Romance delta (0 to 5, only advances if Bond >= 0)
+    // Romance (0 to 5): supports absolute set or delta adjustment
     if (typeof deltas.romance === 'number' && !isNaN(deltas.romance)) {
-      if (deltas.romance > 0) {
-        if (charData.bond >= 0) {
-          charData.romance = Math.min(5, charData.romance + deltas.romance);
-        }
+      if (deltas.isAbsoluteRomance) {
+        charData.romance = Math.max(0, Math.min(5, deltas.romance));
       } else {
-        charData.romance = Math.max(0, charData.romance + deltas.romance);
+        if (deltas.romance > 0) {
+          if (charData.bond >= 0) {
+            charData.romance = Math.min(5, charData.romance + deltas.romance);
+          }
+        } else {
+          charData.romance = Math.max(0, charData.romance + deltas.romance);
+        }
       }
     }
 
     // Severe hostility naturally deteriorates romance
-    if (charData.bond <= -3 && charData.romance > 0) {
-      charData.romance = Math.max(0, charData.romance - 1);
-    }
-  },
-
-  // Fallback: Updates Bond and Romance via negation-safe keyword scanning
-  updateMeters(text, state) {
-    this.init(state);
-    var active = state.attachLink.activeChar;
-    if (!active || !text) return;
-
-    var charData = this.ensureCharacter(active, state);
-    var kw = AttachLinkConfig.keywords;
-
-    // Bond Track: Can increase to +5 or deteriorate to -5
-    if (kw.bondInc.some(w => matchWordSafe(text, w)) && charData.bond < 5) charData.bond++;
-    if (kw.bondDec.some(w => matchWordSafe(text, w)) && charData.bond > -5) charData.bond--;
-
-    // Romance Track: Advances only if bond is not hostile (Bond >= 0)
-    if (kw.romanceInc.some(w => matchWordSafe(text, w)) && charData.bond >= 0 && charData.romance < 5) {
-      charData.romance++;
-    }
-    if (kw.romanceDec.some(w => matchWordSafe(text, w)) && charData.romance > 0) {
-      charData.romance--;
-    }
-
-    // Hostility checks
     if (charData.bond <= -3 && charData.romance > 0) {
       charData.romance = Math.max(0, charData.romance - 1);
     }
@@ -431,10 +719,10 @@ var AttachLink = {
       `   [3/5] Lovers / Partners (Open romantic passion & dating)\n` +
       `   [4/5] Deep Devotion (Intense love & committed passion)\n` +
       `   [5/5] Eternal Soulmates (Bound by true, unbreakable love)\n\n` +
-      `🧠 5-THOUGHT CONSOLIDATION CYCLE:\n` +
-      `• Thoughts accumulate from 1 to 5 as you interact.\n` +
-      `• At 5 thoughts, the AI synthesizes them into a permanent "Core Impression" and updates their "Secret Agenda".\n` +
-      `• The thoughts reset to 0 to keep the Story Card token-friendly.`;
+      `🧠 AUTOMATIC PAUSE MENU & REFLECTIONS:\n` +
+      `• Every ${AttachLinkConfig.reflectionCooldown} turns, the script will automatically pause the story.\n` +
+      `• The AI will analyze your actions and update the NPC's core thoughts, agenda, and relationship levels.\n` +
+      `• Type \`/reflect\` manually to force a relationship check anytime.`;
   },
 
   // Sync Story Card (Writes Entry and Notes safely across AID versions)
@@ -451,19 +739,13 @@ var AttachLink = {
 
     var agendaText = charData.agenda ? `Secret Agenda: "${charData.agenda}"\n` : "";
     var coreMemoryText = charData.coreMemory ? `Core Impression: "${charData.coreMemory}"\n` : "";
-    var thoughtsText = charData.thoughts.length > 0
-      ? charData.thoughts.map((t, i) => `  ${i + 1}. "${t}"`).join("\n")
-      : "  (Formulating initial impressions...)";
 
     var cardContent = `[${cardTitle} - Relationship Status]\n` +
       `• Mood: ${moodDesc}\n` +
       `• Bond: ${this.renderBondBar(charData.bond)} (${bondSign}) ${bondDesc}\n` +
       `• Romance: ${this.renderRomanceBar(charData.romance)} (${charData.romance}/5) ${romanceDesc}\n\n` +
       agendaText +
-      coreMemoryText +
-      `\nRecent Thoughts (${charData.thoughts.length}/5):\n` +
-      `${thoughtsText}\n\n` +
-      `(At 5 thoughts, memories auto-summarize into Core Impression & Agenda)`;
+      coreMemoryText;
 
     var cardNotes = this.buildCardNotes(charName);
     var aliases = this.getAliases(charName);

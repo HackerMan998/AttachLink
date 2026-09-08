@@ -27,17 +27,13 @@ var modifier = (text) => {
         state.memory.frontMemory = emotionalContext;
       }
 
-      // 3. Inject Thought or Consolidation prompt (defer on turn 0 so opening prompt generates cleanly)
+      // 3. Check for automatic pause menu reflection
       let taskPrompt = "";
       if (currentAction > 0) {
-        if (charData.thoughts.length >= AttachLinkConfig.MAX_THOUGHTS_BEFORE_SUMMARY) {
-          const thoughtsBundle = charData.thoughts.join(" | ");
-          taskPrompt = `\n\n[Task: Begin output strictly with (${activeChar}'s AttachLink Summary: "One brief sentence synthesizing your recent feelings (${thoughtsBundle}) into a core impression" | Agenda: "One brief sentence describing your active secret goal or intention"). Then continue the story.]\n`;
-        } else {
-          const shouldThink = Math.random() * 100 < AttachLinkConfig.thoughtChancePercent;
-          if (shouldThink) {
-            taskPrompt = `\n\n[Task: Begin output strictly with (${activeChar}'s AttachLink: "one brief sentence in first person reflecting your private thoughts" | Mood: [current emotion] | Bond: [+/-0-1] | Romance: [+/-0-1]). Then continue the story.]\n`;
-          }
+        if (state.attachLink.turnsSinceReflection >= AttachLinkConfig.reflectionCooldown) {
+          state.attachLink.isReflecting = true;
+          state.attachLink.reflectingCharacter = activeChar;
+          taskPrompt = `\n\n[Task: STOP THE STORY. Review the opening scenario, Plot Essentials, and ${activeChar}'s character lore. Write an inner monologue for ${activeChar} reflecting on their relationship with the protagonist, then output their relationship stats. Format strictly as: (${activeChar}'s AttachLink: "deep thoughts" | Mood: [current emotion] | Agenda: [current secret goal] | Bond: [+/-N or =N] | Romance: [+/-N or =N]). Do NOT continue the story or write dialogue.]\n`;
         }
       }
 
