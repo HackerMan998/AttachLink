@@ -7,6 +7,7 @@
 Made with ❤️ by Neal ([Nealverse](https://ko-fi.com/nealverse)) · [HackerMan998](https://github.com/HackerMan998)
 
 [![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Nealverse-ff5e5b?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/nealverse)
+[![License: CC0-1.0](https://img.shields.io/badge/License-CC0_1.0-blue.svg?style=for-the-badge)](LICENSE)
 
 ---
 
@@ -340,14 +341,14 @@ modifier(text);
 #### 4. The `Library` Tab
 1. Select the **Library** tab on the left.
 2. Delete any existing code.
-3. Copy the full contents of [`library.js`](./library.js) and paste it into your empty **Library** tab.
+3. Copy the full contents of [`src/library.js`](./src/library.js) and paste it into your empty **Library** tab.
 4. Click the yellow **SAVE** button in the top right corner!
 
 ---
 
 ## For Creators: The Control Panel
 
-At the very top of `library.js`, you'll find the creator configuration block:
+At the very top of [`src/library.js`](./src/library.js), you'll find the creator configuration block:
 
 ```javascript
 var AttachLinkConfig = {
@@ -393,9 +394,15 @@ If AttachLink enhances your AI Dungeon adventures and you'd like to support cont
 
 ---
 
-## Permissions & Open Source
+## License & Open Source Permissions 📜
 
-AttachLink is free and open-source. You have full permission to use, share, modify, or embed AttachLink in any of your personal or published AI Dungeon scenarios. Please enjoy, and have fun building living worlds! ❤️
+AttachLink is free, open-source, and licensed under the **[Creative Commons CC0 1.0 Universal (CC0 1.0) Public Domain Dedication](LICENSE)**.
+
+This means you are granted complete freedom worldwide to:
+- **Use & Play:** Embed AttachLink into any of your personal or publicly published AI Dungeon scenarios.
+- **Modify & Adapt:** Tweak the relationship algorithms, add new gauges, customize reflection cooldowns, or rewrite prompts to fit your fictional world.
+- **Distribute & Share:** Share your scenarios, scripts, or derivative works anywhere without restrictions.
+- **No Legal Strings Attached:** You are not legally required to ask for permission or include copyright notices, although crediting **AttachLink by Nealverse** or dropping a tip on [Ko-fi](https://ko-fi.com/nealverse) is always deeply appreciated! ❤️
 
 ---
 
