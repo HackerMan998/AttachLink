@@ -5,15 +5,20 @@ var modifier = (text) => {
       ? AttachLink.cleanContextLeaks(text)
       : text;
 
-    // 2. Identify active character
-    const activeChar = typeof AttachLink !== 'undefined'
-      ? AttachLink.resolveActiveCharacter(state, history)
-      : null;
+    if (typeof AttachLink === 'undefined') {
+      return { text: cleanedText };
+    }
+
+    AttachLink.init(state);
+
+    // 2. Identify active character or manual reflection target
+    const activeChar = AttachLink.resolveActiveCharacter(state, history);
+    const targetChar = (state.attachLink && state.attachLink.reflectingCharacter) || activeChar;
 
     let finalText = cleanedText;
 
-    if (activeChar && typeof AttachLink !== 'undefined') {
-      const charData = AttachLink.ensureCharacter(activeChar, state);
+    if (targetChar) {
+      const charData = AttachLink.ensureCharacter(targetChar, state);
       const currentAction = (typeof info !== 'undefined' && info.actionCount) ? info.actionCount : 0;
 
       // Inject relationship & cognitive context into frontMemory
@@ -27,14 +32,25 @@ var modifier = (text) => {
         state.memory.frontMemory = emotionalContext;
       }
 
-      // 3. Check for automatic pause menu reflection
+      // 3. Check for automatic or manual pause menu reflection
       let taskPrompt = "";
-      if (currentAction > 0) {
-        if (state.attachLink.turnsSinceReflection >= AttachLinkConfig.reflectionCooldown) {
-          state.attachLink.isReflecting = true;
-          state.attachLink.reflectingCharacter = activeChar;
-          taskPrompt = `\n\n[Task: STOP THE STORY. Review the opening scenario, Plot Essentials, and ${activeChar}'s character lore. Write an inner monologue for ${activeChar} reflecting on their relationship with the protagonist, then output their relationship stats. Format strictly as: (${activeChar}'s AttachLink: "deep thoughts" | Mood: [current emotion] | Agenda: [current secret goal] | Bond: [+/-N or =N] | Romance: [+/-N or =N]). Do NOT continue the story or write dialogue.]\n`;
-        }
+      const isReflecting = state.attachLink && state.attachLink.isReflecting;
+      const turns = (state.attachLink && state.attachLink.turnsSinceReflection) || 0;
+
+      if (isReflecting || (currentAction > 0 && turns >= AttachLinkConfig.reflectionCooldown)) {
+        state.attachLink.isReflecting = true;
+        state.attachLink.reflectingCharacter = state.attachLink.reflectingCharacter || targetChar;
+        taskPrompt = `\n\n[Task: STOP THE STORY & REFLECT. Step into the mind of ${targetChar} and reflect deeply on what just happened in the recent scene with the protagonist.
+Write ${targetChar}'s authentic, unfiltered first-person internal monologue in quotes (what she is feeling, thinking about the protagonist, and desiring next).
+Evaluate her updated relationship stats based on the scene:
+• Physical intimacy / Sex / Romance: Increase Romance (+1 to +2) and Bond (+1 to +2). Mood: Passionate, Devoted, Loving, or Flustered.
+• Teamwork / Friendship / Bonding: Increase Bond (+1 to +2). Mood: Warm, Cordial, or Cheerful.
+• Conflict / Betrayal / Fear: Decrease Bond (-1 to -2). Mood: Guarded, Distrustful, or Hostile.
+Format strictly as:
+(${targetChar}'s AttachLink: "[1-3 sentences of genuine inner monologue reacting directly to the recent scene]" | Mood: [Emotion] | Agenda: [What she secretly desires or wants next] | Bond: [+/-1 to +/-3] | Romance: [+/-1 to +/-3])
+Rules:
+• Do NOT copy bracket placeholders. Write genuine thoughts for ${targetChar}.
+• Do NOT continue the story or write dialogue.]\n`;
       }
 
       if (taskPrompt) {

@@ -7,8 +7,10 @@ var AttachLinkConfig = {
   // 1. Manually specified characters (Supports multi-word names, e.g. ["Marie Onette"])
   MANUAL_CHARACTERS: [""],
 
-  // 2. Anti-Spam Sighting Filter (Fixes the "Bartender Problem")
-  // Unlisted NPCs must persist continuously across this many turns before receiving a card
+  // 2. NPC Detection Scope
+  // Set to false (default) so only real NPCs with Character Story Cards (or MANUAL_CHARACTERS) receive cards.
+  // This prevents common story words like "Her", "And", "Pacific" from ever turning into cards!
+  autoDiscoverUnlistedNPCs: false,
   NEW_NPC_SIGHTING_THRESHOLD: 10,
 
   // 3. Automation Settings
@@ -44,12 +46,47 @@ var AttachLinkConfig = {
   }
 };
 
-// Common capitalized sentence starters to ignore during candidate name detection
+// Comprehensive list of English pronouns, conjunctions, prepositions, adverbs, and generic capitalized story words
 var BANNED_CANDIDATE_WORDS = new Set([
-  "The", "A", "An", "You", "Your", "He", "She", "They", "We", "It", "Suddenly",
-  "Meanwhile", "Inside", "Outside", "Then", "After", "Before", "When", "There",
-  "Here", "What", "How", "Why", "Yes", "No", "Please", "Look", "Come", "Go",
-  "Wait", "Stop", "Hello", "Goodbye", "Soon", "Finally", "Still", "Never", "Always"
+  // Pronouns & Possessives
+  "I", "Me", "My", "Mine", "Myself",
+  "You", "Your", "Yours", "Yourself", "Yourselves",
+  "He", "Him", "His", "Himself",
+  "She", "Her", "Hers", "Herself",
+  "It", "Its", "Itself",
+  "We", "Us", "Our", "Ours", "Ourselves",
+  "They", "Them", "Their", "Theirs", "Themselves",
+  "Who", "Whom", "Whose", "Which", "What", "Whatever",
+  "This", "That", "These", "Those",
+  "One", "Ones", "Someone", "Somebody", "Something",
+  "Anyone", "Anybody", "Anything",
+  "Everyone", "Everybody", "Everything",
+  "No one", "Nobody", "Nothing",
+
+  // Conjunctions & Prepositions
+  "And", "Or", "But", "Nor", "For", "Yet", "So",
+  "Although", "Though", "Even", "If", "Unless", "Until", "While", "Because", "Since",
+  "About", "Above", "Across", "After", "Against", "Along", "Among", "Around", "At",
+  "Before", "Behind", "Below", "Beneath", "Beside", "Between", "Beyond", "By",
+  "Down", "During", "Except", "From", "In", "Inside", "Into", "Near", "Of", "Off",
+  "On", "Onto", "Out", "Outside", "Over", "Past", "Through", "Throughout", "To",
+  "Toward", "Towards", "Under", "Underneath", "Upon", "With", "Within", "Without",
+
+  // Determiners, Adverbs, and Common Sentence Starters
+  "The", "A", "An", "Some", "Any", "Every", "Each", "All", "Both", "Half",
+  "Either", "Neither", "Much", "Many", "More", "Most", "Few", "Fewer", "Little",
+  "Less", "Least", "Several", "Such", "Own", "Other", "Another",
+  "Suddenly", "Meanwhile", "Then", "There", "Here", "Where", "When", "Why", "How",
+  "Yes", "No", "Not", "Never", "Always", "Often", "Seldom", "Rarely", "Usually",
+  "Please", "Look", "Looked", "Looking", "Come", "Came", "Coming", "Go", "Went", "Going",
+  "Wait", "Waited", "Stop", "Stopped", "Hello", "Goodbye", "Soon", "Finally", "Still",
+  "Just", "Only", "Also", "Too", "Very", "Really", "Almost", "Quite", "Already",
+  "Now", "Today", "Tonight", "Tomorrow", "Yesterday", "Morning", "Night", "Day",
+  "First", "Second", "Third", "Next", "Last", "Once", "Twice", "Again", "Back", "Away",
+
+  // Generic adjectives / geographical words
+  "Pacific", "Atlantic", "Arctic", "Indian", "North", "South", "East", "West",
+  "Central", "Northern", "Southern", "Eastern", "Western", "Upper", "Lower"
 ]);
 
 var escapeRegex = function(str) {
@@ -70,26 +107,33 @@ var CHARACTER_CARD_TYPES = new Set([
 
 // ==================== CORE ENGINE ====================
 var AttachLink = {
+  isBannedWord(word) {
+    if (!word || typeof word !== 'string') return true;
+    var w = word.trim();
+    if (BANNED_CANDIDATE_WORDS.has(w)) return true;
+    var titleCase = w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    return BANNED_CANDIDATE_WORDS.has(titleCase);
+  },
+
   init(state) {
     if (!state.attachLink) {
-      state.attachLink = {
-        characters: {},  // Active tracked characters with cards
-        candidates: {},  // Sightings buffer for new, unverified NPCs
-        activeChar: null,
-        bootstrapped: false, // One-shot flag: create cards for all pre-existing NPC story cards
-        turnsSinceReflection: 0,
-        isReflecting: false,
-        reflectingCharacter: null
-      };
+      state.attachLink = {};
     }
+    state.attachLink.characters = state.attachLink.characters || {};
+    state.attachLink.candidates = state.attachLink.candidates || {};
+    if (typeof state.attachLink.activeChar === 'undefined') state.attachLink.activeChar = null;
+    if (typeof state.attachLink.turnsSinceReflection === 'undefined') state.attachLink.turnsSinceReflection = 0;
+    if (typeof state.attachLink.isReflecting === 'undefined') state.attachLink.isReflecting = false;
+    if (typeof state.attachLink.reflectingCharacter === 'undefined') state.attachLink.reflectingCharacter = null;
 
     // Always purge any erroneously created non-character cards (locations, concepts, items)
     this.cleanupInvalidAttachLinkCards(state);
 
-    // On very first run, immediately generate AttachLink cards for all named character NPCs
+    // On very first run, immediately generate AttachLink cards for all named character NPCs and system dashboard
     if (!state.attachLink.bootstrapped) {
       state.attachLink.bootstrapped = true;
       this.bootstrapExistingNPCs(state);
+      this.syncSystemConsoleCard(state);
     }
   },
 
@@ -183,23 +227,30 @@ var AttachLink = {
 
     for (var i = storyCards.length - 1; i >= 0; i--) {
       var card = storyCards[i];
-      if (!card || !card.title || !/AttachLink/i.test(card.title)) continue;
+      if (!card || !card.title) continue;
+      // Never purge the System Console card
+      if (/AttachLink\s*System\s*Console/i.test(card.title)) continue;
+      if (!/AttachLink/i.test(card.title)) continue;
 
       var match = card.title.match(/^(.+?)(?:'s|’s|\s)+AttachLink/i) || card.title.match(/^(.+?)\s*AttachLink/i);
       if (!match || !match[1].trim()) continue;
 
       var charName = match[1].replace(/['’]s$/i, '').trim();
 
-      // If explicitly specified in MANUAL_CHARACTERS, preserve it
-      if (AttachLinkConfig.MANUAL_CHARACTERS && AttachLinkConfig.MANUAL_CHARACTERS.includes(charName)) {
+      // If explicitly specified in MANUAL_CHARACTERS, preserve it (case-insensitive)
+      if (AttachLinkConfig.MANUAL_CHARACTERS && AttachLinkConfig.MANUAL_CHARACTERS.some(m => m.toLowerCase() === charName.toLowerCase())) {
         continue;
       }
 
-      // Check if there is a base card that is explicitly NOT a character
+      // Check if there is a base card that is explicitly a valid character card
       var baseCard = storyCards.find(c => c && c.title && !/AttachLink/i.test(c.title) && c.title.trim().toLowerCase() === charName.toLowerCase());
 
       var isInvalid = false;
-      if (baseCard) {
+
+      // If it's a banned word (e.g. Her, And, Pacific), always purge it
+      if (this.isBannedWord(charName)) {
+        isInvalid = true;
+      } else if (baseCard) {
         var baseType = (baseCard.type || "").toLowerCase().trim();
         if (baseType && baseType !== "character" && baseType !== "person" && baseType !== "npc" && baseType !== "companion") {
           isInvalid = true;
@@ -207,8 +258,12 @@ var AttachLink = {
           isInvalid = true;
         }
       } else {
-        // If no base card exists and title contains clear place/system keywords, mark as invalid
-        if (/\b(room|suite|den|lounge|chamber|bar|patio|deck|vault|stage|dock|docks|bay|wing|penthouse|building|hall|corridor|street|city|district|forest|cave|mountain|rules|policy|system|protocol|bot|bots)\b/i.test(charName)) {
+        // If no base card exists, only keep if it is explicitly in MANUAL_CHARACTERS or active tracked characters
+        var isTracked = state && state.attachLink && state.attachLink.characters && 
+          Object.keys(state.attachLink.characters).some(k => k.toLowerCase() === charName.toLowerCase());
+        var isManual = AttachLinkConfig.MANUAL_CHARACTERS && 
+          AttachLinkConfig.MANUAL_CHARACTERS.some(m => m.toLowerCase() === charName.toLowerCase());
+        if (!isTracked && !isManual) {
           isInvalid = true;
         }
       }
@@ -478,9 +533,28 @@ var AttachLink = {
     var cleanName = (name || "").trim();
     if (!cleanName) return null;
 
-    if (!state.attachLink.characters[cleanName]) {
-      state.attachLink.characters[cleanName] = {
-        name: cleanName,
+    // Never track banned words
+    if (this.isBannedWord(cleanName)) return null;
+
+    // Check case-insensitively if this character already exists in state
+    var existingKey = Object.keys(state.attachLink.characters).find(k => k.toLowerCase() === cleanName.toLowerCase());
+    if (existingKey) {
+      var existingData = state.attachLink.characters[existingKey];
+      if (existingData.coreMemory && /deep thoughts|thoughts about the protagonist/i.test(existingData.coreMemory)) {
+        existingData.coreMemory = "";
+      }
+      if (existingData.agenda && /personal secret goal|secret personal goal/i.test(existingData.agenda)) {
+        existingData.agenda = "";
+      }
+      return existingData;
+    }
+
+    // Normalize to Title Case (e.g. "cera" -> "Cera", "claire stanfield" -> "Claire Stanfield")
+    var titleCaseName = cleanName.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+
+    if (!state.attachLink.characters[titleCaseName]) {
+      state.attachLink.characters[titleCaseName] = {
+        name: titleCaseName,
         bond: 0,          // Stage 0: Neutral Acquaintance (-5 to +5)
         romance: 0,       // Stage 0: Platonic (0 to 5)
         mood: "Neutral",  // Dynamic emotional state / demeanor
@@ -491,7 +565,7 @@ var AttachLink = {
         initialized: false
       };
     }
-    return state.attachLink.characters[cleanName];
+    return state.attachLink.characters[titleCaseName];
   },
 
   // Scans history for presence, manages anti-spam discovery and candidate decay
@@ -505,51 +579,57 @@ var AttachLink = {
 
     var recognized = this.getRecognizedCharacters();
 
-    // 1. Scan for potential new NPC names (1-word or 2-word proper nouns)
-    var potentialNames = textCorpus.match(/\b[A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?\b/g) || [];
-    var seenThisTurn = new Set();
-
-    for (var rawName of potentialNames) {
-      var cleanName = rawName.trim();
-      var firstWord = cleanName.split(/\s+/)[0];
-      if (BANNED_CANDIDATE_WORDS.has(firstWord) || recognized.has(cleanName)) continue;
-
-      // Reject candidates matching known non-character story cards (locations, concepts, etc.)
-      if (typeof storyCards !== 'undefined' && Array.isArray(storyCards)) {
-        var isKnownNonChar = storyCards.some(c => c && c.title && NON_CHARACTER_CARD_TYPES.has((c.type || "").toLowerCase().trim()) && c.title.trim().toLowerCase() === cleanName.toLowerCase());
-        if (isKnownNonChar) continue;
-      }
-
-      // Reject candidates that contain obvious non-person tokens (rooms, bars, vaults, etc.)
-      if (/\b(room|suite|den|lounge|chamber|bar|patio|deck|vault|stage|dock|docks|bay|wing|penthouse|building|hall|corridor|street|city|district|forest|cave|mountain|rules|policy|system|protocol|bot|bots)\b/i.test(cleanName)) {
-        continue;
-      }
-
-      seenThisTurn.add(cleanName);
-
-      // Increment sighting counter
-      state.attachLink.candidates[cleanName] = (state.attachLink.candidates[cleanName] || 0) + 1;
-
-      // When an unlisted NPC persists for the full threshold, promote them!
-      if (state.attachLink.candidates[cleanName] >= AttachLinkConfig.NEW_NPC_SIGHTING_THRESHOLD) {
-        this.ensureCharacter(cleanName, state);
-        delete state.attachLink.candidates[cleanName];
+    // Purge only accidental banned words from existing state tracking (never purge valid tracked NPCs)
+    for (var trackedName of Object.keys(state.attachLink.characters)) {
+      if (this.isBannedWord(trackedName)) {
+        delete state.attachLink.characters[trackedName];
       }
     }
 
-    // 2. CANDIDATE DECAY: One-off side characters fade away if not actively present
-    for (var name in state.attachLink.candidates) {
-      if (!seenThisTurn.has(name)) {
-        state.attachLink.candidates[name]--;
-        if (state.attachLink.candidates[name] <= 0) {
-          delete state.attachLink.candidates[name];
+    // 1. Scan for potential new NPC names ONLY if autoDiscoverUnlistedNPCs is explicitly enabled
+    if (AttachLinkConfig.autoDiscoverUnlistedNPCs) {
+      var potentialNames = textCorpus.match(/\b[A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15})?\b/g) || [];
+      var seenThisTurn = new Set();
+
+      for (var rawName of potentialNames) {
+        var cleanName = rawName.trim();
+        var firstWord = cleanName.split(/\s+/)[0];
+        if (BANNED_CANDIDATE_WORDS.has(firstWord) || BANNED_CANDIDATE_WORDS.has(cleanName) || recognized.has(cleanName)) continue;
+
+        // Reject candidates matching known story cards
+        if (typeof storyCards !== 'undefined' && Array.isArray(storyCards)) {
+          var isKnownNonChar = storyCards.some(c => c && c.title && c.title.trim().toLowerCase() === cleanName.toLowerCase());
+          if (isKnownNonChar) continue;
+        }
+
+        seenThisTurn.add(cleanName);
+
+        // Increment sighting counter
+        state.attachLink.candidates[cleanName] = (state.attachLink.candidates[cleanName] || 0) + 1;
+
+        // When an unlisted NPC persists for the full threshold, promote them!
+        if (state.attachLink.candidates[cleanName] >= AttachLinkConfig.NEW_NPC_SIGHTING_THRESHOLD) {
+          this.ensureCharacter(cleanName, state);
+          delete state.attachLink.candidates[cleanName];
         }
       }
+
+      // 2. CANDIDATE DECAY: One-off side characters fade away if not actively present
+      for (var name in state.attachLink.candidates) {
+        if (!seenThisTurn.has(name)) {
+          state.attachLink.candidates[name]--;
+          if (state.attachLink.candidates[name] <= 0) {
+            delete state.attachLink.candidates[name];
+          }
+        }
+      }
+    } else {
+      state.attachLink.candidates = {};
     }
 
     // 3. Select the best active character currently in the scene
     var allTracked = Object.keys(state.attachLink.characters).concat(Array.from(recognized));
-    var uniqueTracked = [...new Set(allTracked)].filter(Boolean);
+    var uniqueTracked = [...new Set(allTracked)].filter(n => n && !BANNED_CANDIDATE_WORDS.has(n));
     if (uniqueTracked.length === 0) {
       state.attachLink.activeChar = null;
       return null;
@@ -587,6 +667,165 @@ var AttachLink = {
 
     state.attachLink.activeChar = bestChar;
     return bestChar;
+  },
+
+  // Robust parser for LLM reflection responses (extracts monologue, mood, agenda, bond, romance)
+  parseReflection(text, charName, history) {
+    var result = {
+      thought: "",
+      mood: null,
+      agenda: null,
+      bond: undefined,
+      isAbsoluteBond: false,
+      romance: undefined,
+      isAbsoluteRomance: false
+    };
+
+    if (!text || typeof text !== 'string') return result;
+
+    var isDummyThought = function(t) {
+      if (!t) return true;
+      return /deep thoughts|thoughts about the protagonist|inner monologue about|insert thought|write thought/i.test(t);
+    };
+
+    var isDummyAgenda = function(a) {
+      if (!a) return true;
+      return /personal secret goal|secret personal goal|secret goal|insert agenda|what npc wants/i.test(a);
+    };
+
+    // 1. Extract thought / inner monologue
+    // Priority A: Quoted string of substantial length
+    var quoteMatch = text.match(/["“]([^"”]{10,})["”]/);
+    if (quoteMatch && !isDummyThought(quoteMatch[1])) {
+      result.thought = quoteMatch[1].trim();
+    } else {
+      // Priority B: Text after AttachLink: before any attribute keywords or pipes/newlines
+      var fallbackMatch = text.match(/AttachLink\s*[:=\-]\s*([^|•\n\r]+)/i);
+      if (fallbackMatch) {
+        var cleanFallback = fallbackMatch[1].trim().replace(/^[\(\[\*"'“]+|[\)\]\*"”]+$/g, '');
+        if (!isDummyThought(cleanFallback)) {
+          result.thought = cleanFallback;
+        }
+      }
+    }
+
+    // 2. Extract Mood (supports: Mood: Devoted, Mood: [Devoted], • Mood: Devoted, etc.)
+    var moodMatch = text.match(/(?:Mood|Emotion|Demeanor)\s*[:=\-]?\s*[\[\("“']?([a-zA-Z\s\/\-]+?)[\]\)"”']?(?:\s*(?:\||\n|\r|$))/i);
+    if (moodMatch) {
+      var rawMood = moodMatch[1].trim();
+      if (rawMood.length >= 2 && rawMood.length <= 35 && !/current emotion|emotion/i.test(rawMood)) {
+        result.mood = rawMood.charAt(0).toUpperCase() + rawMood.slice(1).toLowerCase();
+      }
+    }
+
+    // 3. Extract Agenda (supports: Agenda: Master lessons, Agenda: [Goal], etc.)
+    var agendaMatch = text.match(/(?:Agenda|Goal|Desire)\s*[:=\-]?\s*[\[\("“']?([^\]\)"”\n\r|]+?)[\]\)"”']?(?:\s*(?:\||\n|\r|$))/i);
+    if (agendaMatch) {
+      var rawAgenda = agendaMatch[1].trim();
+      if (rawAgenda.length >= 3 && rawAgenda.length <= 150 && !isDummyAgenda(rawAgenda)) {
+        result.agenda = rawAgenda;
+      }
+    }
+
+    // 4. Extract Bond (supports: Bond: +1, Bond: [+1], Bond: =3, • Bond: +2, Bond: 1, etc.)
+    var bondMatch = text.match(/(?:Bond(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*([=+\-]?\s*\d+)/i);
+    if (bondMatch) {
+      var rawBond = bondMatch[1].replace(/\s+/g, '');
+      if (rawBond.startsWith("+") || rawBond.startsWith("-")) {
+        result.bond = parseInt(rawBond, 10);
+        result.isAbsoluteBond = false;
+      } else {
+        result.bond = parseInt(rawBond.replace(/^=/, ''), 10);
+        result.isAbsoluteBond = true;
+      }
+    }
+
+    // 5. Extract Romance (supports: Romance: +1, Romance: [+1], Romance: 1/5, etc.)
+    var romanceMatch = text.match(/(?:Romance(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*([=+\-]?\s*\d+)/i);
+    if (romanceMatch) {
+      var rawRomance = romanceMatch[1].replace(/\s+/g, '');
+      if (rawRomance.startsWith("+") || rawRomance.startsWith("-")) {
+        result.romance = parseInt(rawRomance, 10);
+        result.isAbsoluteRomance = false;
+      } else {
+        result.romance = parseInt(rawRomance.replace(/^=/, ''), 10);
+        result.isAbsoluteRomance = true;
+      }
+    }
+
+    // 6. Context & Scene-Aware Intelligence (handles sexual intimacy, combat, bonding, or omitted/dummy deltas)
+    var recentCorpus = "";
+    if (Array.isArray(history) && history.length > 0) {
+      recentCorpus = history.slice(-6).map(h => (h ? (h.text || h.rawText || "") : "")).join(" ");
+    }
+    var fullScene = (recentCorpus + " " + text).toLowerCase();
+
+    var isSexOrIntimacy = /\b(cock|pussy|dick|shaft|thrust\w*|inside (her|me)|cervix|wet|folds|naked|climax|orgasm|moan\w*|groan\w*|legs wide|tight walls|whimper\w*|sucking|blowjob|fellatio|condom|sex|making love|naked skin)\b/i.test(fullScene);
+    var isRomantic = isSexOrIntimacy || /\b(kiss\w*|caress\w*|hug\w*|cuddle\w*|blush\w*|gentle touch|sweetheart|romantic|dating|confess\w*|in love)\b/i.test(fullScene);
+    var isCombat = /\b(battle|fight\w*|attack\w*|sword|shield|wound\w*|blood\w*|enemy|monster|kill\w*|protect\w*|saved me)\b/i.test(fullScene);
+    var isHostile = /\b(hate|despise|threat|fear|afraid|terrified|disgust|kill|betray|traitor|distrust|suspicious|cruel)\b/i.test(fullScene);
+
+    // If the model echoed dummy text or omitted a real monologue, generate an authentic thought based on the scene:
+    if (!result.thought) {
+      if (isSexOrIntimacy) {
+        result.thought = `Being so completely intimate and surrendered to him was overwhelming... feeling him inside me makes me want to be his completely.`;
+      } else if (isRomantic) {
+        result.thought = `Being close to him makes my heart race and feel safe at the same time... I love spending time with him.`;
+      } else if (isCombat) {
+        result.thought = `Surviving that danger with him proved I can trust him with my life... we watch each other's backs.`;
+      } else {
+        result.thought = `Every moment we spend together builds more trust... I feel our bond growing stronger.`;
+      }
+    }
+
+    // Dynamic adjustment for intense scenes
+    if (isSexOrIntimacy) {
+      // Sexual intimacy MUST advance both romance and bond substantially!
+      if (result.bond === undefined || result.bond < 2) {
+        result.bond = 2;
+        result.isAbsoluteBond = false;
+      }
+      if (result.romance === undefined || result.romance <= 0) {
+        result.romance = 2;
+        result.isAbsoluteRomance = false;
+      } else if (result.romance === 1 && !result.isAbsoluteRomance) {
+        result.romance = 2; // Strong surge during intimacy
+      }
+      if (!result.mood || result.mood === "Neutral") {
+        result.mood = "Passionate";
+      }
+      if (!result.agenda) {
+        result.agenda = `Deepen our intimacy and stay close in his arms`;
+      }
+    } else if (isHostile) {
+      if (result.bond === undefined || result.bond >= 0) {
+        result.bond = -1;
+        result.isAbsoluteBond = false;
+      }
+      if (!result.mood) result.mood = "Distrustful";
+    } else if (isRomantic) {
+      if (result.bond === undefined) {
+        result.bond = 1;
+        result.isAbsoluteBond = false;
+      }
+      if (result.romance === undefined) {
+        result.romance = 1;
+        result.isAbsoluteRomance = false;
+      }
+      if (!result.mood) result.mood = "Affectionate";
+    } else {
+      if (result.bond === undefined) {
+        result.bond = 1;
+        result.isAbsoluteBond = false;
+      }
+      if (result.romance === undefined) {
+        result.romance = 0;
+        result.isAbsoluteRomance = false;
+      }
+      if (!result.mood) result.mood = "Cordial";
+    }
+
+    return result;
   },
 
   // Apply LLM-generated reflection deltas or absolute sets directly (Primary Agentic Engine)
@@ -740,12 +979,21 @@ var AttachLink = {
     var agendaText = charData.agenda ? `Secret Agenda: "${charData.agenda}"\n` : "";
     var coreMemoryText = charData.coreMemory ? `Core Impression: "${charData.coreMemory}"\n` : "";
 
+    var pastMemoriesText = "";
+    if (charData.thoughts && Array.isArray(charData.thoughts) && charData.thoughts.length > 0) {
+      var filteredPast = charData.thoughts.filter(t => t && t !== charData.coreMemory && !/deep thoughts|thoughts about the protagonist/i.test(t));
+      if (filteredPast.length > 0) {
+        pastMemoriesText = `\n[Memory History]\n` + filteredPast.slice(0, 3).map(t => `• "${t}"`).join("\n") + "\n";
+      }
+    }
+
     var cardContent = `[${cardTitle} - Relationship Status]\n` +
       `• Mood: ${moodDesc}\n` +
       `• Bond: ${this.renderBondBar(charData.bond)} (${bondSign}) ${bondDesc}\n` +
       `• Romance: ${this.renderRomanceBar(charData.romance)} (${charData.romance}/5) ${romanceDesc}\n\n` +
       agendaText +
-      coreMemoryText;
+      coreMemoryText +
+      pastMemoriesText;
 
     var cardNotes = this.buildCardNotes(charName);
     var aliases = this.getAliases(charName);
@@ -782,6 +1030,110 @@ var AttachLink = {
         });
       }
     }
+  },
+
+  // Live System Console Story Card: displays dashboard, countdown, and active character
+  syncSystemConsoleCard(state) {
+    if (typeof storyCards === 'undefined' || !Array.isArray(storyCards)) return;
+    this.init(state);
+
+    var cardTitle = "AttachLink System Console";
+    var turns = (state.attachLink && state.attachLink.turnsSinceReflection) || 0;
+    var maxTurns = AttachLinkConfig.reflectionCooldown || 15;
+    var remaining = Math.max(0, maxTurns - turns);
+    var active = (state.attachLink && state.attachLink.activeChar) || "None detected in current scene";
+
+    var charLines = [];
+    if (state.attachLink && state.attachLink.characters) {
+      for (var name in state.attachLink.characters) {
+        var d = state.attachLink.characters[name];
+        if (!d) continue;
+        var bDesc = AttachLinkConfig.bondLevels[d.bond ? d.bond.toString() : "0"] || "Neutral";
+        var rDesc = AttachLinkConfig.romanceLevels[d.romance ? d.romance.toString() : "0"] || "Platonic";
+        var bSign = d.bond > 0 ? `+${d.bond}` : d.bond;
+        charLines.push(`  • ${name}: Bond ${bSign} (${bDesc}) | Romance ${d.romance || 0}/5 (${rDesc}) | Mood: ${d.mood || 'Neutral'}`);
+      }
+    }
+
+    var charSection = charLines.length > 0
+      ? charLines.join("\n")
+      : "  • (No characters tracked yet. Create a Character Story Card or type /track [Name])";
+
+    var cardContent = `[AttachLink Engine v4.3 - System Dashboard]\n` +
+      `• Active NPC in Scene: ${active}\n` +
+      `• Reflection Countdown: Turn ${turns} / ${maxTurns} (${remaining} turns until auto-pause)\n` +
+      `• Tracking Mode: Character Story Cards & Manual Commands\n\n` +
+      `[Tracked Relationships]\n` +
+      `${charSection}\n\n` +
+      `[Quick Commands]\n` +
+      `• /reflect [Name] : Pause immediately to reflect on relationship (e.g. /reflect Vera)\n` +
+      `• /track [Name]   : Add an unlisted NPC to tracking (e.g. /track Vera)\n` +
+      `• /status         : Display current countdown status in chat`;
+
+    var cardNotes = `📖 [ATTACHLINK SYSTEM CONSOLE GUIDE]\n` +
+      `This system card provides a real-time status dashboard for AttachLink.\n` +
+      `It updates automatically every turn and tracks cooldowns and active characters.\n` +
+      `(Consumes 0 prompt tokens during story generation).`;
+
+    var keys = "AttachLink, AttachLink System, System Console, status, dashboard, console";
+    var type = "System";
+
+    var index = storyCards.findIndex(c => c && (c.title === cardTitle || c.name === cardTitle));
+    if (index !== -1) {
+      if (typeof updateStoryCard === 'function') {
+        try { updateStoryCard(index, keys, cardContent, type, cardTitle, cardNotes); }
+        catch (e) { try { updateStoryCard(index, keys, cardContent, type); } catch (e2) {} }
+      }
+      if (storyCards[index]) {
+        storyCards[index].entry = cardContent;
+        storyCards[index].description = cardNotes;
+        storyCards[index].notes = cardNotes;
+      }
+    } else {
+      if (typeof addStoryCard === 'function') {
+        try { addStoryCard(keys, cardContent, type, cardTitle, cardNotes); }
+        catch (e) { try { addStoryCard(keys, cardContent, type); } catch (e2) {} }
+      }
+      var afterIndex = storyCards.findIndex(c => c && (c.title === cardTitle || c.name === cardTitle));
+      if (afterIndex === -1) {
+        storyCards.push({
+          title: cardTitle,
+          name: cardTitle,
+          keys: keys,
+          entry: cardContent,
+          type: type,
+          description: cardNotes,
+          notes: cardNotes
+        });
+      }
+    }
+  },
+
+  // Scans recent history to find prominent NPC names in the current scene (e.g. "Vera")
+  findProminentNameInScene(history) {
+    if (!Array.isArray(history) || history.length === 0) return null;
+    var recent = history.slice(-5);
+    var corpus = recent.map(h => (h ? (h.text || h.rawText || "") : "")).join(" ");
+    var words = corpus.match(/\b[A-Z][a-z]{2,15}\b/g) || [];
+    var counts = {};
+    for (var w of words) {
+      if (this.isBannedWord(w)) continue;
+      // Reject if known location or concept title
+      if (typeof storyCards !== 'undefined' && Array.isArray(storyCards)) {
+        var isPlace = storyCards.some(c => c && c.title && c.title.trim().toLowerCase() === w.toLowerCase());
+        if (isPlace) continue;
+      }
+      counts[w] = (counts[w] || 0) + 1;
+    }
+    var best = null;
+    var max = 0;
+    for (var name in counts) {
+      if (counts[name] > max) {
+        max = counts[name];
+        best = name;
+      }
+    }
+    return best;
   }
 };
 
