@@ -4,9 +4,10 @@
 
 # AttachLink 🔗
 ### *Living NPC Minds, Dynamic Bonds, and Emotional Chemistry~*
-Made with ❤️ by Neal ([Nealverse](https://ko-fi.com/nealverse)) · [HackerMan998](https://github.com/HackerMan998)
+Made with ❤️ by Neal ([Nealverse](https://ko-fi.com/nealverse)) · [AI Dungeon Scenarios](https://play.aidungeon.com/profile?contentType=scenario&sort=updated) · [HackerMan998](https://github.com/HackerMan998)
 
 [![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Nealverse-ff5e5b?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/nealverse)
+[![AI Dungeon Scenarios](https://img.shields.io/badge/AI%20Dungeon-Nealverse%20Scenarios-7952e8?style=for-the-badge&logo=gamepad&logoColor=white)](https://play.aidungeon.com/profile?contentType=scenario&sort=updated)
 [![License: CC0-1.0](https://img.shields.io/badge/License-CC0_1.0-blue.svg?style=for-the-badge)](LICENSE)
 
 ---
@@ -380,7 +381,7 @@ var AttachLinkConfig = {
 
 ---
 
-## Support & Buy Me a Coffee ☕
+## Support & Creator Scenarios ☕
 
 If AttachLink enhances your AI Dungeon adventures and you'd like to support continued development, new features, or help me and my family stay afloat with essentials and bank loans, please consider supporting me on Ko-fi! Every bit of support means the world to me and helps keep projects like AttachLink completely free, open-source, and actively maintained.
 
@@ -391,6 +392,10 @@ If AttachLink enhances your AI Dungeon adventures and you'd like to support cont
   <br>
   👉 <a href="https://ko-fi.com/nealverse"><b>ko-fi.com/nealverse</b></a>
 </p>
+
+### 🎮 Play My AI Dungeon Scenarios
+Looking for adventures to test AttachLink in? Explore all my interactive stories and scenarios on AI Dungeon:  
+👉 **[Nealverse's AI Dungeon Profile & Scenarios](https://play.aidungeon.com/profile?contentType=scenario&sort=updated)**
 
 ---
 
