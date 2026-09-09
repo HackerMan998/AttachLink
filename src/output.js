@@ -8,7 +8,8 @@ var modifier = (text) => {
 
     // 1. Handle Command Messages (e.g. /status, /track, or helpful notices)
     if (state.attachLink && state.attachLink.commandMessage) {
-      cleanedText = `\n\n>>> 💡 [AttachLink System] ${state.attachLink.commandMessage} Please press continue to resume. <<<\n`;
+      cleanedText = `\n\n>>> 💡 [AttachLink System] ${state.attachLink.commandMessage} Please press continue to resume. <<<\n\n`;
+      state.attachLink.justReflected = true;
       delete state.attachLink.commandMessage;
       if (state.attachLink && state.attachLink.characters) {
         for (var cName of Object.keys(state.attachLink.characters)) {
@@ -21,7 +22,8 @@ var modifier = (text) => {
 
     // 2. Handle Automatic or Manual Pause Menu (Reflection Turn)
     if (state.attachLink && state.attachLink.isReflecting) {
-      const charName = state.attachLink.reflectingCharacter || state.attachLink.activeChar;
+      const rawCharName = state.attachLink.reflectingCharacter || state.attachLink.activeChar;
+      const charName = AttachLink.cleanCharacterName(rawCharName);
       
       const parsed = AttachLink.parseReflection(cleanedText, charName, (typeof history !== 'undefined' ? history : []));
 
@@ -49,13 +51,25 @@ var modifier = (text) => {
         });
       }
 
-      // Reset reflection state
+      // Reset reflection state & flag to guarantee clean line jumps on continuation
       state.attachLink.turnsSinceReflection = 0;
       state.attachLink.isReflecting = false;
       state.attachLink.reflectingCharacter = null;
+      state.attachLink.justReflected = true;
+      
+      const charData = AttachLink.ensureCharacter(charName, state);
+      const moodText = (charData && charData.mood) ? ` | Mood: ${charData.mood}` : "";
+      const bondVal = charData ? (charData.bond > 0 ? `+${charData.bond}` : charData.bond) : "";
+      const bondText = bondVal !== "" ? ` | Bond: ${bondVal}` : "";
       
       // Override output with pause message
-      cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "The characters are"} reflecting on your actions... Relationship updated! Please press continue to resume the story. <<<\n`;
+      cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "Companion"} reflected: Relationship updated${moodText}${bondText}! Press continue to resume the story. <<<\n\n`;
+    } else {
+      // If previous turn was a reflection pause or system notice, guarantee continuation starts on a fresh double-spaced paragraph
+      if (state.attachLink && state.attachLink.justReflected) {
+        state.attachLink.justReflected = false;
+        cleanedText = "\n\n" + cleanedText.trimStart();
+      }
     }
 
     // Secondary leak cleaner pass to guarantee zero immersion breaks

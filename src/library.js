@@ -164,6 +164,34 @@ var AttachLink = {
     return false;
   },
 
+  // Cleans sub-descriptors and formats character names (e.g. "Anna - Behavior" -> "Anna", "Chris - Anna Friend" -> "Chris")
+  cleanCharacterName(title) {
+    if (!title || typeof title !== 'string') return "";
+    var name = title.trim();
+
+    // Strip AttachLink suffix if present
+    name = name.replace(/(?:'s|’s|\s)+AttachLink.*$/i, '').trim();
+
+    // Strip parentheticals and brackets: "Gary (The Bartender)" -> "Gary"
+    name = name.replace(/\s*[\(\[\{][^\)\]\}]+[\)\]\}]/g, '').trim();
+
+    // Strip colon/hyphen descriptor suffixes: "Anna - Behavior", "Chris - Anna Friend", "Lyra: Royal Heir"
+    var separatorMatch = name.match(/^([^:\-]+?)\s*[:\-–—]\s*(.+)$/);
+    if (separatorMatch) {
+      var prefix = separatorMatch[1].trim();
+      var suffix = separatorMatch[2].trim();
+      if (/^(?:behavior|appearance|personality|lore|backstory|info|stats|profile|dialogue|prompt|character|friend|enemy|ally|companion|rival|boss|npc|data|notes|guide)/i.test(suffix) ||
+          /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*$/.test(prefix)) {
+        if (!this.isBannedWord(prefix) && prefix.length >= 2) {
+          name = prefix;
+        }
+      }
+    }
+
+    name = name.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '').trim();
+    return name;
+  },
+
   // Generates name variants/aliases for a character (e.g. "Marie Onette" -> ["Marie Onette", "Marie"])
   getAliases(fullName) {
     var clean = (fullName || "").trim();
@@ -178,7 +206,7 @@ var AttachLink = {
 
   // Collect all recognized character names from config and Story Cards safely
   getRecognizedCharacters() {
-    var names = new Set((AttachLinkConfig.MANUAL_CHARACTERS || []).map(n => n.trim()).filter(Boolean));
+    var names = new Set((AttachLinkConfig.MANUAL_CHARACTERS || []).map(n => this.cleanCharacterName(n)).filter(Boolean));
 
     if (AttachLinkConfig.autoDetectFromStoryCards && typeof storyCards !== 'undefined' && Array.isArray(storyCards)) {
       // Collect known non-character card titles to prevent false positive matches
@@ -200,10 +228,10 @@ var AttachLink = {
         if (/AttachLink/i.test(title)) {
           var match = title.match(/^(.+?)(?:'s|’s|\s)+AttachLink/i) || title.match(/^(.+?)\s*AttachLink/i);
           if (match && match[1].trim()) {
-            var candidate = match[1].replace(/['’]s$/i, '').trim();
-            if (!knownNonCharTitles.has(candidate.toLowerCase())) {
-              var hasCharCard = storyCards.some(c => c && c.title && !/AttachLink/i.test(c.title) && c.title.trim().toLowerCase() === candidate.toLowerCase() && this.isCharacterCard(c));
-              var isManual = AttachLinkConfig.MANUAL_CHARACTERS && AttachLinkConfig.MANUAL_CHARACTERS.includes(candidate);
+            var candidate = this.cleanCharacterName(match[1]);
+            if (candidate && !knownNonCharTitles.has(candidate.toLowerCase()) && !this.isBannedWord(candidate)) {
+              var hasCharCard = storyCards.some(c => c && c.title && !/AttachLink/i.test(c.title) && this.cleanCharacterName(c.title).toLowerCase() === candidate.toLowerCase() && this.isCharacterCard(c));
+              var isManual = AttachLinkConfig.MANUAL_CHARACTERS && AttachLinkConfig.MANUAL_CHARACTERS.some(m => this.cleanCharacterName(m).toLowerCase() === candidate.toLowerCase());
               if (hasCharCard || isManual) {
                 names.add(candidate);
               }
@@ -214,7 +242,10 @@ var AttachLink = {
 
         // 2. Only accept cards that represent real characters (strictly skips locations, items, etc.)
         if (this.isCharacterCard(card)) {
-          names.add(title);
+          var cleanName = this.cleanCharacterName(title);
+          if (cleanName && !knownNonCharTitles.has(cleanName.toLowerCase()) && !this.isBannedWord(cleanName)) {
+            names.add(cleanName);
+          }
         }
       }
     }
@@ -235,20 +266,27 @@ var AttachLink = {
       var match = card.title.match(/^(.+?)(?:'s|’s|\s)+AttachLink/i) || card.title.match(/^(.+?)\s*AttachLink/i);
       if (!match || !match[1].trim()) continue;
 
-      var charName = match[1].replace(/['’]s$/i, '').trim();
+      var rawCharName = match[1].replace(/['’]s$/i, '').trim();
+      var charName = this.cleanCharacterName(rawCharName);
 
       // If explicitly specified in MANUAL_CHARACTERS, preserve it (case-insensitive)
-      if (AttachLinkConfig.MANUAL_CHARACTERS && AttachLinkConfig.MANUAL_CHARACTERS.some(m => m.toLowerCase() === charName.toLowerCase())) {
-        continue;
+      if (AttachLinkConfig.MANUAL_CHARACTERS && AttachLinkConfig.MANUAL_CHARACTERS.some(m => this.cleanCharacterName(m).toLowerCase() === charName.toLowerCase())) {
+        if (rawCharName.toLowerCase() !== charName.toLowerCase()) {
+          isInvalid = true;
+        } else {
+          continue;
+        }
       }
 
       // Check if there is a base card that is explicitly a valid character card
-      var baseCard = storyCards.find(c => c && c.title && !/AttachLink/i.test(c.title) && c.title.trim().toLowerCase() === charName.toLowerCase());
+      var baseCard = storyCards.find(c => c && c.title && !/AttachLink/i.test(c.title) && this.cleanCharacterName(c.title).toLowerCase() === charName.toLowerCase());
 
       var isInvalid = false;
 
-      // If it's a banned word (e.g. Her, And, Pacific), always purge it
-      if (this.isBannedWord(charName)) {
+      // If the card title has a mangled/uncleaned sub-descriptor (e.g. "Anna - Behavior's AttachLink") purge it!
+      if (rawCharName.toLowerCase() !== charName.toLowerCase()) {
+        isInvalid = true;
+      } else if (this.isBannedWord(charName)) {
         isInvalid = true;
       } else if (baseCard) {
         var baseType = (baseCard.type || "").toLowerCase().trim();
@@ -260,9 +298,9 @@ var AttachLink = {
       } else {
         // If no base card exists, only keep if it is explicitly in MANUAL_CHARACTERS or active tracked characters
         var isTracked = state && state.attachLink && state.attachLink.characters && 
-          Object.keys(state.attachLink.characters).some(k => k.toLowerCase() === charName.toLowerCase());
+          Object.keys(state.attachLink.characters).some(k => this.cleanCharacterName(k).toLowerCase() === charName.toLowerCase());
         var isManual = AttachLinkConfig.MANUAL_CHARACTERS && 
-          AttachLinkConfig.MANUAL_CHARACTERS.some(m => m.toLowerCase() === charName.toLowerCase());
+          AttachLinkConfig.MANUAL_CHARACTERS.some(m => this.cleanCharacterName(m).toLowerCase() === charName.toLowerCase());
         if (!isTracked && !isManual) {
           isInvalid = true;
         }
@@ -271,9 +309,17 @@ var AttachLink = {
       if (isInvalid) {
         // Purge from state tracking
         if (state && state.attachLink) {
-          if (state.attachLink.characters) delete state.attachLink.characters[charName];
-          if (state.attachLink.candidates) delete state.attachLink.candidates[charName];
-          if (state.attachLink.activeChar === charName) state.attachLink.activeChar = null;
+          if (state.attachLink.characters) {
+            delete state.attachLink.characters[rawCharName];
+            delete state.attachLink.characters[charName];
+          }
+          if (state.attachLink.candidates) {
+            delete state.attachLink.candidates[rawCharName];
+            delete state.attachLink.candidates[charName];
+          }
+          if (state.attachLink.activeChar === rawCharName || state.attachLink.activeChar === charName) {
+            state.attachLink.activeChar = null;
+          }
         }
 
         // Delete from storyCards array and call AID API if available
@@ -292,7 +338,8 @@ var AttachLink = {
   // Checks if a character's AttachLink story card already exists
   attachLinkCardExists(charName) {
     if (typeof storyCards === 'undefined' || !Array.isArray(storyCards)) return false;
-    var cardTitle = `${charName}'s AttachLink`;
+    var clean = this.cleanCharacterName(charName);
+    var cardTitle = `${clean}'s AttachLink`;
     return storyCards.some(c => c && (c.title === cardTitle || c.name === cardTitle));
   },
 
@@ -336,11 +383,13 @@ var AttachLink = {
   // Finds base character card (excluding companion AttachLink cards)
   getBaseCharacterCard(charName) {
     if (typeof storyCards === 'undefined' || !Array.isArray(storyCards) || !charName) return null;
-    var lower = charName.toLowerCase().trim();
+    var lower = this.cleanCharacterName(charName).toLowerCase().trim();
     return storyCards.find(c => {
       if (!c || !c.title) return false;
       var t = c.title.toLowerCase().trim();
-      return !/attachlink/i.test(t) && (t === lower || (c.keys && c.keys.toLowerCase().includes(lower)));
+      if (/attachlink/i.test(t)) return false;
+      var cleanT = this.cleanCharacterName(c.title).toLowerCase().trim();
+      return cleanT === lower || t === lower || (c.keys && c.keys.toLowerCase().includes(lower));
     }) || null;
   },
 
@@ -530,7 +579,7 @@ var AttachLink = {
   // Initialize a character with a neutral baseline & cognitive fields
   ensureCharacter(name, state) {
     this.init(state);
-    var cleanName = (name || "").trim();
+    var cleanName = this.cleanCharacterName(name);
     if (!cleanName) return null;
 
     // Never track banned words
@@ -729,16 +778,16 @@ var AttachLink = {
       }
     }
 
-    // 4. Extract Bond (supports: Bond: +1, Bond: [+1], Bond: =3, • Bond: +2, Bond: 1, etc.)
+    // 4. Extract Bond (supports: Bond: +1, Bond: [+1], Bond: =3, • Bond: +2, Bond: 1, Bond: 0, etc.)
     var bondMatch = text.match(/(?:Bond(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*([=+\-]?\s*\d+)/i);
     if (bondMatch) {
       var rawBond = bondMatch[1].replace(/\s+/g, '');
-      if (rawBond.startsWith("+") || rawBond.startsWith("-")) {
+      if (rawBond.startsWith("=")) {
+        result.bond = parseInt(rawBond.slice(1), 10);
+        result.isAbsoluteBond = true;
+      } else {
         result.bond = parseInt(rawBond, 10);
         result.isAbsoluteBond = false;
-      } else {
-        result.bond = parseInt(rawBond.replace(/^=/, ''), 10);
-        result.isAbsoluteBond = true;
       }
     }
 
@@ -746,16 +795,16 @@ var AttachLink = {
     var romanceMatch = text.match(/(?:Romance(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*([=+\-]?\s*\d+)/i);
     if (romanceMatch) {
       var rawRomance = romanceMatch[1].replace(/\s+/g, '');
-      if (rawRomance.startsWith("+") || rawRomance.startsWith("-")) {
+      if (rawRomance.startsWith("=")) {
+        result.romance = parseInt(rawRomance.slice(1), 10);
+        result.isAbsoluteRomance = true;
+      } else {
         result.romance = parseInt(rawRomance, 10);
         result.isAbsoluteRomance = false;
-      } else {
-        result.romance = parseInt(rawRomance.replace(/^=/, ''), 10);
-        result.isAbsoluteRomance = true;
       }
     }
 
-    // 6. Context & Scene-Aware Intelligence (handles sexual intimacy, combat, bonding, or omitted/dummy deltas)
+    // 6. Context & Scene-Aware Intelligence
     var recentCorpus = "";
     if (Array.isArray(history) && history.length > 0) {
       recentCorpus = history.slice(-6).map(h => (h ? (h.text || h.rawText || "") : "")).join(" ");
@@ -763,68 +812,47 @@ var AttachLink = {
     var fullScene = (recentCorpus + " " + text).toLowerCase();
 
     var isSexOrIntimacy = /\b(cock|pussy|dick|shaft|thrust\w*|inside (her|me|him|them)|cervix|wet|folds|naked|climax|orgasm|moan\w*|groan\w*|legs wide|tight walls|whimper\w*|sucking|blowjob|fellatio|condom|sex|making love|naked skin)\b/i.test(fullScene);
-    var isRomantic = isSexOrIntimacy || /\b(kiss\w*|caress\w*|hug\w*|cuddle\w*|blush\w*|gentle touch|sweetheart|romantic|dating|confess\w*|in love)\b/i.test(fullScene);
-    var isCombat = /\b(battle|fight\w*|attack\w*|sword|shield|wound\w*|blood\w*|enemy|monster|kill\w*|protect\w*|saved me)\b/i.test(fullScene);
-    var isHostile = /\b(hate|despise|threat|fear|afraid|terrified|disgust|kill|betray|traitor|distrust|suspicious|cruel)\b/i.test(fullScene);
 
     // If the model echoed dummy text or omitted a real monologue, generate an authentic thought based on the scene:
     if (!result.thought) {
       if (isSexOrIntimacy) {
-        result.thought = `Being so completely intimate and vulnerable together was overwhelming... experiencing such deep passion makes me feel closer to them than ever.`;
-      } else if (isRomantic) {
-        result.thought = `Being this close to them makes my heart race and feel safe at the same time... I cherish every moment we share.`;
-      } else if (isCombat) {
-        result.thought = `Surviving that danger together proved I can trust them with my life... we watch each other's backs.`;
+        result.thought = `Being so completely intimate together was intense... experiencing that vulnerability brings us closer.`;
       } else {
-        result.thought = `Every moment we spend together builds more trust... I feel our bond growing stronger.`;
+        result.thought = `Reflecting on recent events and keeping my own priorities in mind as things progress.`;
       }
     }
 
-    // Dynamic adjustment for intense scenes
+    // Explicit sexual intimacy guarantee
     if (isSexOrIntimacy) {
-      // Sexual intimacy MUST advance both romance and bond substantially!
-      if (result.bond === undefined || result.bond < 2) {
-        result.bond = 2;
+      if (result.bond === undefined || result.bond < 1) {
+        result.bond = 1;
         result.isAbsoluteBond = false;
       }
       if (result.romance === undefined || result.romance <= 0) {
-        result.romance = 2;
+        result.romance = 1;
         result.isAbsoluteRomance = false;
-      } else if (result.romance === 1 && !result.isAbsoluteRomance) {
-        result.romance = 2; // Strong surge during intimacy
       }
       if (!result.mood || result.mood === "Neutral") {
         result.mood = "Passionate";
       }
       if (!result.agenda) {
-        result.agenda = `Deepen our intimacy and stay close together`;
+        result.agenda = `Deepen our intimacy and explore what this connection means.`;
       }
-    } else if (isHostile) {
-      if (result.bond === undefined || result.bond >= 0) {
-        result.bond = -1;
-        result.isAbsoluteBond = false;
-      }
-      if (!result.mood) result.mood = "Distrustful";
-    } else if (isRomantic) {
-      if (result.bond === undefined) {
-        result.bond = 1;
-        result.isAbsoluteBond = false;
-      }
-      if (result.romance === undefined) {
-        result.romance = 1;
-        result.isAbsoluteRomance = false;
-      }
-      if (!result.mood) result.mood = "Affectionate";
-    } else {
-      if (result.bond === undefined) {
-        result.bond = 1;
-        result.isAbsoluteBond = false;
-      }
-      if (result.romance === undefined) {
-        result.romance = 0;
-        result.isAbsoluteRomance = false;
-      }
-      if (!result.mood) result.mood = "Cordial";
+    }
+
+    // Anti-Sycophancy Defaults:
+    // If the LLM omitted Bond, Romance, or Mood, default to 0 (NO CHANGE).
+    // Never inject unearned loyalty or false hostility!
+    if (result.bond === undefined) {
+      result.bond = 0;
+      result.isAbsoluteBond = false;
+    }
+    if (result.romance === undefined) {
+      result.romance = 0;
+      result.isAbsoluteRomance = false;
+    }
+    if (!result.mood) {
+      result.mood = "Neutral";
     }
 
     return result;
@@ -1152,10 +1180,13 @@ AttachLink.fitContext = function(text, extraCharsNeeded = 300) {
   return cutIndex !== -1 ? text.slice(cutIndex + 2) : text.slice(excess);
 };
 
-// 2. Multi-word leak cleaner: completely wipes leftover thought traces from text
+// 2. Multi-word leak cleaner: completely wipes leftover thought traces and system banners from text
 AttachLink.cleanContextLeaks = function(text) {
   if (!text) return "";
-  return text.replace(/(?:^|\n)\s*[\(\[\*]*\s*[^:\n\r]+?(?:'s)?\s*AttachLink(?:\s*(?:Consolidation|Summary))?\s*[:=\-][^\n]*\n*/gi, "\n\n").trim();
+  var cleaned = text.replace(/(?:^|\n)\s*[\(\[\*]*\s*[^:\n\r]+?(?:'s)?\s*AttachLink(?:\s*(?:Consolidation|Summary|Update))?\s*[:=\-][^\n]*\n*/gi, "\n\n");
+  // Clean any lingering pause menu notices or system banners from context so AI never sees or imitates them
+  cleaned = cleaned.replace(/(?:^|\n)\s*>>>\s*[🧠💡]\s*\[AttachLink[^\]]*\][^\n<]*<<<\s*/gi, "\n\n");
+  return cleaned.trim();
 };
 
 // Ensure globals are exported on globalThis

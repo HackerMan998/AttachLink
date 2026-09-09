@@ -291,14 +291,19 @@ var modifier = (text) => {
       if (isReflecting || (currentAction > 0 && turns >= AttachLinkConfig.reflectionCooldown)) {
         state.attachLink.isReflecting = true;
         state.attachLink.reflectingCharacter = state.attachLink.reflectingCharacter || targetChar;
-        taskPrompt = `\n\n[Task: STOP THE STORY & REFLECT. Step into the mind of ${targetChar} and reflect deeply on what just happened in the recent scene with the protagonist.
-Write ${targetChar}'s authentic, unfiltered first-person internal monologue in quotes (what they are feeling, thinking about the protagonist, and desiring next).
-Evaluate their updated relationship stats based on the scene:
-• Physical intimacy / Sex / Romance: Increase Romance (+1 to +2) and Bond (+1 to +2). Mood: Passionate, Devoted, Loving, or Flustered.
-• Teamwork / Friendship / Bonding: Increase Bond (+1 to +2). Mood: Warm, Cordial, or Cheerful.
-• Conflict / Betrayal / Fear: Decrease Bond (-1 to -2). Mood: Guarded, Distrustful, or Hostile.
+        taskPrompt = `\n\n[Task: STOP THE STORY & REFLECT. Step into the mind of ${targetChar} and evaluate their authentic feelings, skepticism, and agency regarding recent events with the protagonist.
+Write ${targetChar}'s authentic, unfiltered first-person inner monologue in quotes (their genuine thoughts, doubts, pride, or emotional reactions).
+
+CRITICAL CHARACTER AGENCY RULES:
+• Maintain Independent Agency: ${targetChar} has their own pride, goals, boundaries, and skepticism. They do NOT automatically become loyal, obedient, or infatuated just because the protagonist talks to them or acts politely.
+• Anti-Sycophancy (Realistic Pacing): Most casual conversations, polite banter, or everyday actions MUST result in Bond: +0 and Romance: +0 (No change).
+• Bond (+1): Earned ONLY through proven sacrifice, major shared trials, deep vulnerability, or keeping critical promises.
+• Bond (-1 to -2): Decreased by manipulation, disrespect, broken promises, suspicious behavior, or hostility.
+• Romance (+1): Earned ONLY through explicit romantic chemistry, mutual flirtation, passion, or physical intimacy. Never advance romance from mere friendly talk.
+• Secret Agenda: What does ${targetChar} secretly desire or want for THEMSELVES next (e.g. self-preservation, testing the protagonist, personal ambition)?
+
 Format strictly as:
-(${targetChar}'s AttachLink: "[1-3 sentences of genuine inner monologue reacting directly to the recent scene]" | Mood: [Emotion] | Agenda: [What they secretly desire or want next] | Bond: [+/-1 to +/-3] | Romance: [+/-1 to +/-3])
+(${targetChar}'s AttachLink: "[1-3 sentences of genuine inner monologue reacting directly to the recent scene]" | Mood: [Emotion] | Agenda: [Their personal secret desire or next goal] | Bond: [+0, +1, -1, etc.] | Romance: [+0, +1, etc.])
 Rules:
 • Do NOT copy bracket placeholders. Write genuine thoughts for ${targetChar}.
 • Do NOT continue the story or write dialogue.]\n`;
@@ -338,7 +343,8 @@ var modifier = (text) => {
 
     // 1. Handle Command Messages (e.g. /status, /track, or notices)
     if (state.attachLink && state.attachLink.commandMessage) {
-      cleanedText = `\n\n>>> 💡 [AttachLink System] ${state.attachLink.commandMessage} Please press continue to resume. <<<\n`;
+      cleanedText = `\n\n>>> 💡 [AttachLink System] ${state.attachLink.commandMessage} Please press continue to resume. <<<\n\n`;
+      state.attachLink.justReflected = true;
       delete state.attachLink.commandMessage;
       if (state.attachLink && state.attachLink.characters) {
         for (var cName of Object.keys(state.attachLink.characters)) {
@@ -351,7 +357,8 @@ var modifier = (text) => {
 
     // 2. Handle Automatic or Manual Pause Menu (Reflection Turn)
     if (state.attachLink && state.attachLink.isReflecting) {
-      const charName = state.attachLink.reflectingCharacter || state.attachLink.activeChar;
+      const rawCharName = state.attachLink.reflectingCharacter || state.attachLink.activeChar;
+      const charName = AttachLink.cleanCharacterName(rawCharName);
       
       const parsed = AttachLink.parseReflection(cleanedText, charName, (typeof history !== 'undefined' ? history : []));
 
@@ -379,13 +386,25 @@ var modifier = (text) => {
         });
       }
 
-      // Reset reflection state
+      // Reset reflection state & flag to guarantee clean line jumps on continuation
       state.attachLink.turnsSinceReflection = 0;
       state.attachLink.isReflecting = false;
       state.attachLink.reflectingCharacter = null;
+      state.attachLink.justReflected = true;
+      
+      const charData = AttachLink.ensureCharacter(charName, state);
+      const moodText = (charData && charData.mood) ? ` | Mood: ${charData.mood}` : "";
+      const bondVal = charData ? (charData.bond > 0 ? `+${charData.bond}` : charData.bond) : "";
+      const bondText = bondVal !== "" ? ` | Bond: ${bondVal}` : "";
       
       // Override output with pause message
-      cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "The characters are"} reflecting on your actions... Relationship updated! Please press continue to resume the story. <<<\n`;
+      cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "Companion"} reflected: Relationship updated${moodText}${bondText}! Press continue to resume the story. <<<\n\n`;
+    } else {
+      // If previous turn was a reflection pause or system notice, guarantee continuation starts on a fresh double-spaced paragraph
+      if (state.attachLink && state.attachLink.justReflected) {
+        state.attachLink.justReflected = false;
+        cleanedText = "\n\n" + cleanedText.trimStart();
+      }
     }
 
     // Secondary leak cleaner pass to guarantee zero immersion breaks
