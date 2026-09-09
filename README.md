@@ -175,8 +175,8 @@ var modifier = (text) => {
 
       var trimmed = text.trim();
 
-      // Command: /track [Name] (e.g. /track Vera)
-      var trackMatch = trimmed.match(/^\/track(?:\s+(.+))?$/i);
+      // Command: /track [Name] (e.g. /track Vera or track Vera)
+      var trackMatch = trimmed.match(/^\/?track(?:\s+(.+))?$/i);
       if (trackMatch) {
         var targetName = trackMatch[1] ? trackMatch[1].trim() : "";
         if (!targetName) targetName = AttachLink.findProminentNameInScene(history);
@@ -186,26 +186,26 @@ var modifier = (text) => {
           state.attachLink.activeChar = actualName;
           AttachLink.syncStoryCard(state, actualName);
           AttachLink.syncSystemConsoleCard(state);
-          state.attachLink.commandMessage = `Now tracking ${actualName}! A companion AttachLink card has been created.`;
+          state.message = `[AttachLink] Now tracking ${actualName}! A companion AttachLink card has been created.`;
         } else {
-          state.attachLink.commandMessage = `Please specify a character to track, e.g. /track Vera`;
+          state.message = `[AttachLink] Please specify a character to track, e.g. /track Vera`;
         }
-        return { text: "" };
+        return { text: "", stop: true };
       }
 
-      // Command: /status
-      if (trimmed.match(/^\/status$/i)) {
+      // Command: /status or status
+      if (trimmed.match(/^\/?status$/i)) {
         var turns = (state.attachLink && state.attachLink.turnsSinceReflection) || 0;
         var maxTurns = AttachLinkConfig.reflectionCooldown || 15;
         var remaining = Math.max(0, maxTurns - turns);
         var active = (state.attachLink && state.attachLink.activeChar) || "None";
-        state.attachLink.commandMessage = `Status: Active NPC is "${active}". Turn ${turns}/${maxTurns} (${remaining} turns until automatic pause).`;
+        state.message = `[AttachLink Status] Active NPC: "${active}" | Turn ${turns}/${maxTurns} (${remaining} turns until auto-pause)`;
         AttachLink.syncSystemConsoleCard(state);
-        return { text: "" };
+        return { text: "", stop: true };
       }
 
-      // Command: /reflect [Optional Name] (e.g. /reflect or /reflect Vera)
-      var reflectMatch = trimmed.match(/^\/reflect(?:\s+(.+))?$/i);
+      // Command: /reflect [Optional Name] (e.g. /reflect, reflect, or /reflect Vera)
+      var reflectMatch = trimmed.match(/^\/?reflect(?:\s+(.+))?$/i);
       if (reflectMatch) {
         var targetName = reflectMatch[1] ? reflectMatch[1].trim() : "";
         if (!targetName) {
@@ -220,11 +220,12 @@ var modifier = (text) => {
           state.attachLink.reflectingCharacter = actualName;
           state.attachLink.turnsSinceReflection = AttachLinkConfig.reflectionCooldown;
           AttachLink.syncSystemConsoleCard(state);
-          return { text: "" };
+          // Return non-empty action so AI Dungeon executes reflection immediately without error!
+          return { text: `[${actualName} reflects on recent events]` };
         } else {
-          state.attachLink.commandMessage = `No active character detected in scene. Type '/reflect [Name]' (e.g. /reflect Vera) or create a Character Story Card.`;
+          state.message = `[AttachLink] No active character detected in scene. Type '/reflect [Name]' (e.g. /reflect Vera) or create a Character Story Card.`;
           AttachLink.syncSystemConsoleCard(state);
-          return { text: "" };
+          return { text: "", stop: true };
         }
       }
 
