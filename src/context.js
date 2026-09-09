@@ -41,13 +41,13 @@ var modifier = (text) => {
         state.attachLink.isReflecting = true;
         state.attachLink.reflectingCharacter = state.attachLink.reflectingCharacter || targetChar;
         taskPrompt = `\n\n[Task: STOP THE STORY & REFLECT. Step into the mind of ${targetChar} and reflect deeply on what just happened in the recent scene with the protagonist.
-Write ${targetChar}'s authentic, unfiltered first-person internal monologue in quotes (what she is feeling, thinking about the protagonist, and desiring next).
-Evaluate her updated relationship stats based on the scene:
+Write ${targetChar}'s authentic, unfiltered first-person internal monologue in quotes (what they are feeling, thinking about the protagonist, and desiring next).
+Evaluate their updated relationship stats based on the scene:
 • Physical intimacy / Sex / Romance: Increase Romance (+1 to +2) and Bond (+1 to +2). Mood: Passionate, Devoted, Loving, or Flustered.
 • Teamwork / Friendship / Bonding: Increase Bond (+1 to +2). Mood: Warm, Cordial, or Cheerful.
 • Conflict / Betrayal / Fear: Decrease Bond (-1 to -2). Mood: Guarded, Distrustful, or Hostile.
 Format strictly as:
-(${targetChar}'s AttachLink: "[1-3 sentences of genuine inner monologue reacting directly to the recent scene]" | Mood: [Emotion] | Agenda: [What she secretly desires or wants next] | Bond: [+/-1 to +/-3] | Romance: [+/-1 to +/-3])
+(${targetChar}'s AttachLink: "[1-3 sentences of genuine inner monologue reacting directly to the recent scene]" | Mood: [Emotion] | Agenda: [What they secretly desire or want next] | Bond: [+/-1 to +/-3] | Romance: [+/-1 to +/-3])
 Rules:
 • Do NOT copy bracket placeholders. Write genuine thoughts for ${targetChar}.
 • Do NOT continue the story or write dialogue.]\n`;

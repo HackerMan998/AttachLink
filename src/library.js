@@ -681,7 +681,9 @@ var AttachLink = {
       isAbsoluteRomance: false
     };
 
-    if (!text || typeof text !== 'string') return result;
+    if (text === null || text === undefined) text = "";
+    if (typeof text !== 'string') text = String(text);
+    if (!text.trim() && (!Array.isArray(history) || history.length === 0)) return result;
 
     var isDummyThought = function(t) {
       if (!t) return true;
@@ -760,7 +762,7 @@ var AttachLink = {
     }
     var fullScene = (recentCorpus + " " + text).toLowerCase();
 
-    var isSexOrIntimacy = /\b(cock|pussy|dick|shaft|thrust\w*|inside (her|me)|cervix|wet|folds|naked|climax|orgasm|moan\w*|groan\w*|legs wide|tight walls|whimper\w*|sucking|blowjob|fellatio|condom|sex|making love|naked skin)\b/i.test(fullScene);
+    var isSexOrIntimacy = /\b(cock|pussy|dick|shaft|thrust\w*|inside (her|me|him|them)|cervix|wet|folds|naked|climax|orgasm|moan\w*|groan\w*|legs wide|tight walls|whimper\w*|sucking|blowjob|fellatio|condom|sex|making love|naked skin)\b/i.test(fullScene);
     var isRomantic = isSexOrIntimacy || /\b(kiss\w*|caress\w*|hug\w*|cuddle\w*|blush\w*|gentle touch|sweetheart|romantic|dating|confess\w*|in love)\b/i.test(fullScene);
     var isCombat = /\b(battle|fight\w*|attack\w*|sword|shield|wound\w*|blood\w*|enemy|monster|kill\w*|protect\w*|saved me)\b/i.test(fullScene);
     var isHostile = /\b(hate|despise|threat|fear|afraid|terrified|disgust|kill|betray|traitor|distrust|suspicious|cruel)\b/i.test(fullScene);
@@ -768,11 +770,11 @@ var AttachLink = {
     // If the model echoed dummy text or omitted a real monologue, generate an authentic thought based on the scene:
     if (!result.thought) {
       if (isSexOrIntimacy) {
-        result.thought = `Being so completely intimate and surrendered to him was overwhelming... feeling him inside me makes me want to be his completely.`;
+        result.thought = `Being so completely intimate and vulnerable together was overwhelming... experiencing such deep passion makes me feel closer to them than ever.`;
       } else if (isRomantic) {
-        result.thought = `Being close to him makes my heart race and feel safe at the same time... I love spending time with him.`;
+        result.thought = `Being this close to them makes my heart race and feel safe at the same time... I cherish every moment we share.`;
       } else if (isCombat) {
-        result.thought = `Surviving that danger with him proved I can trust him with my life... we watch each other's backs.`;
+        result.thought = `Surviving that danger together proved I can trust them with my life... we watch each other's backs.`;
       } else {
         result.thought = `Every moment we spend together builds more trust... I feel our bond growing stronger.`;
       }
@@ -795,7 +797,7 @@ var AttachLink = {
         result.mood = "Passionate";
       }
       if (!result.agenda) {
-        result.agenda = `Deepen our intimacy and stay close in his arms`;
+        result.agenda = `Deepen our intimacy and stay close together`;
       }
     } else if (isHostile) {
       if (result.bond === undefined || result.bond >= 0) {
