@@ -1,6 +1,12 @@
+<p align="center">
+  <img src="./assets/cover.jpg" width="800" alt="AttachLink Cover">
+</p>
+
 # AttachLink 🔗
 ### *Living NPC Minds, Dynamic Bonds, and Emotional Chemistry~*
-Made with ❤️ by Nealverse
+Made with ❤️ by Neal ([Nealverse](https://ko-fi.com/nealverse)) · [HackerMan998](https://github.com/HackerMan998)
+
+[![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Nealverse-ff5e5b?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/nealverse)
 
 ---
 
@@ -370,6 +376,20 @@ var AttachLinkConfig = {
 - **Intimacy Reactivity:** Sexual and romantic encounters naturally trigger Romance surges (advancing toward Lovers and Eternal Soulmates) and update the character's core thoughts.
 - **NPCs Remember:** Each character's `Core Impression` is continuously supplied to the AI in the background, subtly steering how they talk to and treat you.
 - **Milestone Memories:** Check your companion story cards periodically! You'll see their latest impression at the top, along with a `[Memory History]` timeline of past key moments.
+
+---
+
+## Support & Buy Me a Coffee ☕
+
+If AttachLink enhances your AI Dungeon adventures and you'd like to support continued development, new features, or help me and my family stay afloat with essentials and bank loans, please consider supporting me on Ko-fi! Every bit of support means the world to me and helps keep projects like AttachLink completely free, open-source, and actively maintained.
+
+<p align="center">
+  <a href="https://ko-fi.com/nealverse" target="_blank">
+    <img src="https://storage.ko-fi.com/cdn/kofi3.png?v=3" height="42" alt="Buy Me a Coffee at ko-fi.com" />
+  </a>
+  <br>
+  👉 <a href="https://ko-fi.com/nealverse"><b>ko-fi.com/nealverse</b></a>
+</p>
 
 ---
 
