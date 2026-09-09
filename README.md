@@ -2,121 +2,180 @@
   <img src="./assets/cover.jpg" width="800" alt="AttachLink Cover">
 </p>
 
-# AttachLink 🔗
-### *Living NPC Minds, Dynamic Bonds, and Emotional Chemistry~*
-Made with ❤️ by Neal ([Nealverse](https://ko-fi.com/nealverse)) · [AI Dungeon Scenarios](https://play.aidungeon.com/profile?contentType=scenario&sort=updated) · [HackerMan998](https://github.com/HackerMan998)
+# <p align="center">AttachLink 🔗</p>
+### <p align="center"><i>Living NPC Minds, Dynamic Bonds, and Emotional Chemistry for AI Dungeon</i></p>
 
-[![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Nealverse-ff5e5b?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/nealverse)
-[![AI Dungeon Scenarios](https://img.shields.io/badge/AI%20Dungeon-Nealverse%20Scenarios-7952e8?style=for-the-badge&logo=gamepad&logoColor=white)](https://play.aidungeon.com/profile?contentType=scenario&sort=updated)
-[![License: CC0-1.0](https://img.shields.io/badge/License-CC0_1.0-blue.svg?style=for-the-badge)](LICENSE)
+<p align="center">
+  Made with ❤️ by <b>Neal (<a href="https://ko-fi.com/nealverse">Nealverse</a>)</b> · <a href="https://github.com/HackerMan998">HackerMan998</a>
+</p>
 
----
+<p align="center">
+  <a href="https://ko-fi.com/nealverse"><img src="https://img.shields.io/badge/Ko--fi-Support%20Nealverse-ff5e5b?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Support on Ko-fi"></a>
+  <a href="https://play.aidungeon.com/profile?contentType=scenario&sort=updated"><img src="https://img.shields.io/badge/AI%20Dungeon-Play%20My%20Scenarios-7952e8?style=for-the-badge&logo=gamepad&logoColor=white" alt="AI Dungeon Scenarios"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC0_1.0-blue.svg?style=for-the-badge" alt="CC0 1.0 License"></a>
+</p>
 
-## Overview
-
-**AttachLink** is an advanced relationship, cognitive memory, and emotional chemistry engine for **AI Dungeon**. It brings your story's characters to life by tracking their personal impressions, shifting moods, secret agendas, and evolving feelings toward your protagonist over long adventures.
-
-Whether your story is an epic fantasy, gritty sci-fi, slice-of-life, or intense romance, AttachLink seamlessly simulates companion minds:
-- **Dual-Track Relationships:** Tracks both deep emotional friendship/trust (**Bond -5 to +5**) and romantic passion (**Romance 0 to 5**).
-- **Pause & Reflect System:** Every 15 turns (or on-demand with `/reflect`), the story pauses so NPCs can write unfiltered, authentic inner monologues evaluating what just happened.
-- **Scene-Aware Intimacy Scaling:** Intimate, romantic, sexual, or life-or-death combat scenes dynamically surge romance and bonds.
-- **Live System Console Dashboard:** Real-time in-game countdown and status dashboard story card.
-- **Zero Story Pollution:** Cleanly swallows commands with zero immersion breaks or command text leaks.
-
----
-
-## Main Features
-
-| Feature | Description |
-|:---|:---|
-| 🎭 **Dual-Track Progression** | Independent tracking for **Bond** (-5 Nemesis to +5 Inseparable) and **Romance** (0 Platonic to 5 Soulmates). |
-| 📊 **Visual Progress Meters** | Companion cards display animated ASCII/Unicode gauges: `[───── │ ►►►──] (+3)` and `[♥♥♥♡♡] (3/5)`. |
-| 🧠 **Pause Menu Reflection** | Automatically pauses the story every 15 turns to allow NPCs to reflect on your actions and update their feelings. |
-| 📜 **Memory History Timeline** | Preserves milestone reflections over time so you can look back on your relationship's emotional journey. |
-| 💖 **Intimacy & Scene Awareness** | Detects romance, sex, and shared battles, dynamically surging romance and bond levels. |
-| 🖥️ **Live System Console Card** | A dedicated system story card tracking active NPCs, turn countdowns, and quick command references. |
-| ⚡ **Turn 0 Lore Bootstrapping** | Reads existing character cards, Plot Essentials, and Opening Scenarios to initialize relationships immediately. |
-| 🛡️ **Anti-Leak & Strict Filtering** | Never leaks internal thought tags into adventure text. Strictly ignores locations, items, and words like *Her* or *Pacific*. |
-| 💬 **In-Game Slash Commands** | Quick commands like `/reflect [Name]`, `/track [Name]`, and `/status` with zero text leakage. |
+<p align="center">
+  <a href="#-overview">Overview</a> •
+  <a href="#-how-it-works">How It Works</a> •
+  <a href="#-what-it-looks-like-in-game">In-Game Cards</a> •
+  <a href="#-relationship-tracks">Relationship Tracks</a> •
+  <a href="#-in-game-commands">Commands</a> •
+  <a href="#-quick-installation-guide">Installation</a> •
+  <a href="#-creator-settings">Settings</a> •
+  <a href="#-support--creator-scenarios">Support</a>
+</p>
 
 ---
 
-## Relationship Tracks & Spectrum
+## 🌟 Overview
 
-### 🤝 The Bond Spectrum (-5 to +5)
-Represents friendship, loyalty, respect, and emotional trust:
+**AttachLink** is an advanced relationship, cognitive memory, and emotional chemistry engine designed specifically for **AI Dungeon**.
 
-| Level | Standing | Description |
-|:---:|:---|:---|
-| **[-5]** | **Sworn Nemesis** | Lethal hatred, vengeful hostility, and mortal enmity. |
-| **[-4]** | **Bitter Foe** | Active animosity, malicious sabotage, and deep bitterness. |
-| **[-3]** | **Open Adversary** | Hostile friction, open rivalry, and constant conflict. |
-| **[-2]** | **Unfriendly** | Cold dislike, irritation, and palpable social tension. |
-| **[-1]** | **Distrustful** | Guarded, suspicious, and skeptical of your motives. |
-| **[ 0]** | **Neutral** | Stranger or casual acquaintance; no strong feelings yet. |
-| **[+1]** | **Cordial** | Polite warmth, friendly ease, and approachable demeanor. |
-| **[+2]** | **Companion** | Enjoyable company, casual friend, and reliable presence. |
-| **[+3]** | **Reliable Friend** | Trustworthy ally, supportive confidant, and faithful friend. |
-| **[+4]** | **Close Confidant** | Deep emotional vulnerability, mutual secrets, and fierce loyalty. |
-| **[+5]** | **Inseparable** | Unconditional devotion, soul-bound loyalty, and unbreakable bond. |
+In default AI Dungeon, companions can easily forget what happened a few turns ago or act generic over long adventures. **AttachLink** gives your story's characters:
+- **Their Own Private Minds:** Personal first-person impressions and shifting moods that react to your actions.
+- **Hidden Agendas:** Secret desires and goals that steer how they treat you.
+- **Dual-Track Progression:** Independent tracking for **Trust & Friendship** (Bond) and **Romantic Passion** (Romance).
+- **Milestone Memories:** A growing timeline of shared memories preserved right on their Story Cards.
+
+Whether you're exploring high-fantasy dungeons, surviving gritty sci-fi, or playing a cozy romance, your companions will truly feel alive.
+
+---
+
+## ⚡ How It Works
+
+AttachLink works quietly behind the scenes without interrupting your narrative flow:
+
+1. **Automatic Detection (Turn 0):** On the very first turn, it automatically reads your scenario's existing character story cards and opening text. Companions are tracked right from the start!
+2. **The 15-Turn Pause Menu:** Every 15 turns (or whenever you type `/reflect`), the story temporarily pauses. The companion steps into their own mind, reflects on recent events, writes an authentic inner monologue, and updates their relationship stats.
+3. **Intimacy & Combat Awareness:** Shared romance, physical intimacy, sex, or surviving life-or-death battles dynamically surge both Bond and Romance levels.
+4. **Memory History Timeline:** Past reflections are saved to a chronological `[Memory History]` log on the companion's card.
+5. **Zero Immersion Leaks:** Internal commands and thinking prompts are cleanly swallowed—they will never clutter your story text.
+
+---
+
+## 🖥️ What It Looks Like In-Game
+
+AttachLink automatically creates and updates real AI Dungeon Story Cards:
+
+### 1. Companion Relationship Card
+Every companion has their own card with live visual meters:
+
+```text
+[Mia's AttachLink - Relationship Status]
+• Mood: Devoted
+• Bond: [───── │ ►►►►►] (+5) Inseparable (Soul-bound loyalty & unbreakable bond)
+• Romance: [♥♥♥♥♥] (5/5) Eternal Soulmates (Bound by true, timeless love)
+
+Secret Agenda: "Stay close to him and build a quiet life together after this quest."
+Core Impression: "Being so close to him makes me feel truly safe. When he held my hand through the storm, I knew I never wanted to let go."
+
+[Memory History]
+• "He listened to me by the campfire when no one else would."
+• "A bit reckless, but he kept his promise to protect my village."
+```
+
+### 2. Live System Console Card
+A handy in-game dashboard story card showing active characters and turn countdowns:
+
+```text
+[AttachLink System Console]
+Status: Active
+Active Companion: Mia
+Turn Progress: 8/15 turns until next automatic reflection pause
+
+Tracked Companions:
+• Mia: Bond +5 | Romance 5/5 (Devoted)
+• Gary: Bond +2 | Romance 0/5 (Cordial)
+
+Commands: /reflect, /reflect [Name], /track [Name], /status
+```
+
+---
+
+## 📊 Relationship Tracks
+
+AttachLink separates emotional friendship from romantic attraction so relationships develop naturally:
+
+### 🤝 The Bond Track (-5 to +5)
+*Measures friendship, loyalty, respect, and mutual trust:*
+
+| Level | Visual Gauge | Standing | What It Means |
+|:---:|:---:|:---|:---|
+| **-5** | `[◄◄◄◄◄ │ ─────]` | **Sworn Nemesis** | Lethal hatred, mortal enmity, and vengeful hostility. |
+| **-4** | `[◄◄◄◄─ │ ─────]` | **Bitter Foe** | Active animosity, malicious sabotage, and bitterness. |
+| **-3** | `[◄◄◄── │ ─────]` | **Open Adversary** | Constant friction, open rivalry, and active defiance. |
+| **-2** | `[◄◄─── │ ─────]` | **Unfriendly** | Cold dislike, social tension, and guarded irritation. |
+| **-1** | `[◄──── │ ─────]` | **Distrustful** | Skeptical of your motives and guarded with personal info. |
+| **0** | `[───── │ ─────]` | **Neutral** | Casual stranger or acquaintance; no strong feelings yet. |
+| **+1** | `[───── │ ►────]` | **Cordial** | Polite warmth, friendly ease, and approachable demeanor. |
+| **+2** | `[───── │ ►►───]` | **Companion** | Enjoyable company, helpful ally, and casual friend. |
+| **+3** | `[───── │ ►►►──]` | **Reliable Friend** | Trustworthy partner, supportive confidant, and faithful ally. |
+| **+4** | `[───── │ ►►►►─]` | **Close Confidant** | Deep emotional vulnerability, shared secrets, and fierce loyalty. |
+| **+5** | `[───── │ ►►►►►]` | **Inseparable** | Unconditional devotion, soul-bound loyalty, and unbreakable bond. |
 
 ---
 
 ### 💖 The Romance Track (0 to 5)
-Represents romantic attraction, desire, and emotional intimacy:
+*Measures romantic attraction, desire, emotional chemistry, and physical intimacy:*
 
-| Level | Stage | Description |
-|:---:|:---|:---|
-| **[0/5]** | **Platonic** | No romantic feelings or physical attraction. |
-| **[1/5]** | **Subtle Spark** | Passing butterflies, subtle blushing, and curious glances. |
-| **[2/5]** | **Mutual Crush** | Flustered attraction, playful flirting, and active romantic interest. |
-| **[3/5]** | **Lovers / Partners** | Open romantic affection, dating, and passionate intimacy. |
-| **[4/5]** | **Deep Devotion** | Intense love, physical and emotional commitment, and profound passion. |
-| **[5/5]** | **Eternal Soulmates** | Unbreakable romantic devotion bound by true, timeless love. |
-
----
-
-## In-Game Slash Commands
-
-AttachLink commands are entered directly into the player action box. They are cleanly swallowed by the engine and **never leak into your story history**:
-
-- **`/reflect [Optional Name]`**  
-  *Examples:* `/reflect` or `/reflect Mia`  
-  Forces an immediate relationship reflection turn for the active character (or specified NPC). The NPC will analyze the recent scene, write an authentic inner monologue, and update their stats.
-- **`/track [Name]`**  
-  *Examples:* `/track Vera` or `/track Claire Stanfield`  
-  Immediately begins tracking an unlisted NPC who doesn't have an original base card. Generates their companion card and adds them to the System Console.
-- **`/status`**  
-  Displays the current active character and the exact turns remaining until the next automatic reflection pause.
+| Stage | Hearts Gauge | Relationship | What It Means |
+|:---:|:---:|:---|:---|
+| **0/5** | `[♡♡♡♡♡]` | **Platonic** | No romantic feelings or physical attraction. Purely platonic. |
+| **1/5** | `[♥♡♡♡♡]` | **Subtle Spark** | Passing butterflies, subtle blushing, and curious glances. |
+| **2/5** | `[♥♥♡♡♡]` | **Mutual Crush** | Flustered attraction, playful teasing, and mutual romantic interest. |
+| **3/5** | `[♥♥♥♡♡]` | **Lovers / Partners** | Open romantic affection, physical intimacy, and passionate dating. |
+| **4/5** | `[♥♥♥♥♡]` | **Deep Devotion** | Intense love, physical and emotional commitment, and profound passion. |
+| **5/5** | `[♥♥♥♥♥]` | **Eternal Soulmates** | Timeless, unbreakable love and total romantic devotion. |
 
 ---
 
-## Scenario Script Install Guide
+## 💬 In-Game Commands
 
-### Step 1: Open Script Settings
-1. Open the [AI Dungeon website](https://play.aidungeon.com/) on PC (or Desktop view on mobile).
-2. Edit your scenario (or create a new one).
-3. Navigate to the **DETAILS** tab at the top.
-4. Scroll down to **Scripting** and toggle **Scripts Enabled** to ON.
-5. Click **EDIT SCRIPTS**.
+Simply type these commands into the player action box during gameplay. AttachLink swallows them immediately—**nothing leaks into the story**:
+
+| Command | Example | Description |
+|:---|:---|:---|
+| **`/reflect`** | `/reflect` | Forces an immediate reflection pause for the active character in the current scene. |
+| **`/reflect [Name]`** | `/reflect Mia` | Triggers an immediate reflection for a specific companion by name. |
+| **`/track [Name]`** | `/track Vera` | Starts tracking an unlisted NPC and creates their companion card. |
+| **`/status`** | `/status` | Displays the active character and turns remaining until the next automatic reflection. |
 
 ---
 
-### Step 2: Paste Tab Codes
+## 🚀 Quick Installation Guide
 
-#### 1. The `Input` Tab
-Select the **Input** tab, delete any existing code, and paste:
+Setting up AttachLink takes **less than 2 minutes**:
+
+### Step 1: Enable Scripting in AI Dungeon
+1. Go to [AI Dungeon](https://play.aidungeon.com/) on PC (or Desktop view on mobile).
+2. Edit your scenario and click the **Details** tab.
+3. Scroll down to **Scripting**, toggle **Scripts Enabled** to **ON**, and click **Edit Scripts**.
+
+---
+
+### Step 2: Copy & Paste the 4 Tabs
+
+Click each tab below to view and copy the code:
+
+<details>
+<summary><b>👉 Tab 1: Input (Click to expand)</b></summary>
+
+Select the **Input** tab in AI Dungeon, delete any existing code, and paste:
+
 ```javascript
 // AttachLink - Input Modifier
 var modifier = (text) => {
   try {
     if (typeof AttachLink !== 'undefined') {
       AttachLink.init(state);
+
+      // 1. Identify active character in the scene
       AttachLink.resolveActiveCharacter(state, history);
 
       var trimmed = text.trim();
 
-      // Command: /track [Name]
+      // Command: /track [Name] (e.g. /track Vera)
       var trackMatch = trimmed.match(/^\/track(?:\s+(.+))?$/i);
       if (trackMatch) {
         var targetName = trackMatch[1] ? trackMatch[1].trim() : "";
@@ -145,7 +204,7 @@ var modifier = (text) => {
         return { text: "" };
       }
 
-      // Command: /reflect [Optional Name]
+      // Command: /reflect [Optional Name] (e.g. /reflect or /reflect Vera)
       var reflectMatch = trimmed.match(/^\/reflect(?:\s+(.+))?$/i);
       if (reflectMatch) {
         var targetName = reflectMatch[1] ? reflectMatch[1].trim() : "";
@@ -181,15 +240,18 @@ var modifier = (text) => {
 
 modifier(text);
 ```
+</details>
 
----
+<details>
+<summary><b>👉 Tab 2: Context (Click to expand)</b></summary>
 
-#### 2. The `Context` Tab
-Select the **Context** tab, delete any existing code, and paste:
+Select the **Context** tab in AI Dungeon, delete any existing code, and paste:
+
 ```javascript
 // AttachLink - Context Modifier
 var modifier = (text) => {
   try {
+    // 1. Clean previous thought leaks from recent text
     let cleanedText = typeof AttachLink !== 'undefined' && AttachLink.cleanContextLeaks
       ? AttachLink.cleanContextLeaks(text)
       : text;
@@ -200,6 +262,7 @@ var modifier = (text) => {
 
     AttachLink.init(state);
 
+    // 2. Identify active character or manual reflection target
     const activeChar = AttachLink.resolveActiveCharacter(state, history);
     const targetChar = (state.attachLink && state.attachLink.reflectingCharacter) || activeChar;
 
@@ -209,6 +272,7 @@ var modifier = (text) => {
       const charData = AttachLink.ensureCharacter(targetChar, state);
       const currentAction = (typeof info !== 'undefined' && info.actionCount) ? info.actionCount : 0;
 
+      // Inject relationship & cognitive context into frontMemory
       const emotionalContext = AttachLink.getPromptContext(state);
       if (typeof state.memory === 'string') {
         if (!state.memory.includes("[AttachLink:")) {
@@ -219,6 +283,7 @@ var modifier = (text) => {
         state.memory.frontMemory = emotionalContext;
       }
 
+      // 3. Check for automatic or manual pause menu reflection
       let taskPrompt = "";
       const isReflecting = state.attachLink && state.attachLink.isReflecting;
       const turns = (state.attachLink && state.attachLink.turnsSinceReflection) || 0;
@@ -240,6 +305,7 @@ Rules:
       }
 
       if (taskPrompt) {
+        // Ensure prompt fits within model context budget before appending
         const fittedBase = AttachLink.fitContext(cleanedText, taskPrompt.length);
         finalText = fittedBase + taskPrompt;
       }
@@ -253,11 +319,13 @@ Rules:
 
 modifier(text);
 ```
+</details>
 
----
+<details>
+<summary><b>👉 Tab 3: Output (Click to expand)</b></summary>
 
-#### 3. The `Output` Tab
-Select the **Output** tab, delete any existing code, and paste:
+Select the **Output** tab in AI Dungeon, delete any existing code, and paste:
+
 ```javascript
 // AttachLink - Output Modifier
 var modifier = (text) => {
@@ -268,7 +336,7 @@ var modifier = (text) => {
       return { text: cleanedText };
     }
 
-    // 1. Handle Command Messages
+    // 1. Handle Command Messages (e.g. /status, /track, or notices)
     if (state.attachLink && state.attachLink.commandMessage) {
       cleanedText = `\n\n>>> 💡 [AttachLink System] ${state.attachLink.commandMessage} Please press continue to resume. <<<\n`;
       delete state.attachLink.commandMessage;
@@ -281,7 +349,7 @@ var modifier = (text) => {
       return { text: cleanedText };
     }
 
-    // 2. Handle Automatic or Manual Pause Menu Reflection
+    // 2. Handle Automatic or Manual Pause Menu (Reflection Turn)
     if (state.attachLink && state.attachLink.isReflecting) {
       const charName = state.attachLink.reflectingCharacter || state.attachLink.activeChar;
       
@@ -311,21 +379,26 @@ var modifier = (text) => {
         });
       }
 
+      // Reset reflection state
       state.attachLink.turnsSinceReflection = 0;
       state.attachLink.isReflecting = false;
       state.attachLink.reflectingCharacter = null;
       
+      // Override output with pause message
       cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "The characters are"} reflecting on your actions... Relationship updated! Please press continue to resume the story. <<<\n`;
     }
 
+    // Secondary leak cleaner pass to guarantee zero immersion breaks
     cleanedText = AttachLink.cleanContextLeaks(cleanedText);
 
+    // Sync updated Story Cards for all tracked characters
     if (state.attachLink && state.attachLink.characters) {
       for (var cName of Object.keys(state.attachLink.characters)) {
         AttachLink.syncStoryCard(state, cName);
       }
     }
 
+    // Always update the live System Console Story Card!
     AttachLink.syncSystemConsoleCard(state);
 
     return { text: cleanedText };
@@ -336,54 +409,58 @@ var modifier = (text) => {
 
 modifier(text);
 ```
+</details>
+
+<details>
+<summary><b>👉 Tab 4: Library (Click to view instructions)</b></summary>
+
+Select the **Library** tab in AI Dungeon, delete any existing code, and paste the full script from [`src/library.js`](./src/library.js).
+
+> **Note:** Because `library.js` contains the complete engine (character discovery, card generators, state management, and memory history), you can open and copy it directly from:  
+> 🔗 **[`src/library.js`](./src/library.js)**
+</details>
+
+Finally, click the yellow **SAVE** button in the top right corner of the AI Dungeon script editor!
 
 ---
 
-#### 4. The `Library` Tab
-1. Select the **Library** tab on the left.
-2. Delete any existing code.
-3. Copy the full contents of [`src/library.js`](./src/library.js) and paste it into your empty **Library** tab.
-4. Click the yellow **SAVE** button in the top right corner!
+## ⚙️ Creator Settings
 
----
-
-## For Creators: The Control Panel
-
-At the very top of [`src/library.js`](./src/library.js), you'll find the creator configuration block:
+If you are a scenario creator, you can easily customize AttachLink at the very top of [`src/library.js`](./src/library.js):
 
 ```javascript
 var AttachLinkConfig = {
-  // 1. Manually specified characters (Supports full names, e.g. ["Marie Onette", "Claire"])
+  // 1. Manually track specific NPC names (e.g. ["Marie", "Claire"])
   MANUAL_CHARACTERS: [""],
 
-  // 2. NPC Detection Scope
-  // Set to false (default) so only real NPCs with Character Story Cards receive companion cards.
+  // 2. Strict NPC Filtering
+  // Keep false (recommended) so only real NPCs with Character Story Cards receive companion cards.
   // This completely prevents common words like "Her", "And", "Pacific" from turning into cards!
   autoDiscoverUnlistedNPCs: false,
 
   // 3. Automation Settings
-  autoDetectFromStoryCards: true,             // Existing character cards are tracked immediately on Turn 0
-  autoGenerateStoryCardsForExistingNPCs: true, // Immediately generates companion cards for all detected NPCs
+  autoDetectFromStoryCards: true,             // Tracks pre-existing NPCs immediately on Turn 0
+  autoGenerateStoryCardsForExistingNPCs: true, // Auto-generates AttachLink companion cards
   reflectionCooldown: 15,                     // Turns between automatic pause-and-reflect cycles
-  lookbackTurnsForPresence: 5                 // Number of recent turns inspected for active character presence
+  lookbackTurnsForPresence: 5                 // Number of recent turns inspected for NPC presence
 };
 ```
 
 ---
 
-## Gameplay & World-Building Tips
+## 💡 Gameplay & Immersion Tips
 
-- **Read Your System Console:** AttachLink automatically maintains a story card titled `AttachLink System Console`. Open it to check turn countdowns and current standing with all tracked characters.
-- **Natural Evolution:** Relationships evolve based on your actions. Spending time talking, sharing secrets, or protecting an NPC raises Bond. Flirting, romantic gestures, and physical intimacy advance Romance.
-- **Intimacy Reactivity:** Sexual and romantic encounters naturally trigger Romance surges (advancing toward Lovers and Eternal Soulmates) and update the character's core thoughts.
-- **NPCs Remember:** Each character's `Core Impression` is continuously supplied to the AI in the background, subtly steering how they talk to and treat you.
-- **Milestone Memories:** Check your companion story cards periodically! You'll see their latest impression at the top, along with a `[Memory History]` timeline of past key moments.
+- 🖥️ **Check the System Console:** Open your `AttachLink System Console` story card anytime to see turn progress and current standing with all party members.
+- 🤝 **Build Real Trust:** Working together, keeping promises, and defending companions advances **Bond**.
+- 💖 **Physical Intimacy & Romance:** Flirting, passionate dates, and sexual intimacy naturally surge **Romance**, unlocking deeper devotion and updating their core thoughts.
+- 🧠 **Living Responses:** Companions genuinely remember their impressions—the AI reads their `Core Impression` in the background, subtly steering how they speak and act.
+- 📜 **Look Back at History:** Check companion cards periodically to read their `[Memory History]` timeline of how your relationship developed over time!
 
 ---
 
-## Support & Creator Scenarios ☕
+## ☕ Support & Creator Scenarios
 
-If AttachLink enhances your AI Dungeon adventures and you'd like to support continued development, new features, or help me and my family stay afloat with essentials and bank loans, please consider supporting me on Ko-fi! Every bit of support means the world to me and helps keep projects like AttachLink completely free, open-source, and actively maintained.
+If AttachLink brings your AI Dungeon adventures to life and you'd like to support continued updates (or help me and my family stay afloat with essentials and bank loans), please consider dropping a tip on Ko-fi! Every bit of support means the world to me and helps keep projects like AttachLink completely free, open-source, and actively maintained.
 
 <p align="center">
   <a href="https://ko-fi.com/nealverse" target="_blank">
@@ -394,22 +471,21 @@ If AttachLink enhances your AI Dungeon adventures and you'd like to support cont
 </p>
 
 ### 🎮 Play My AI Dungeon Scenarios
-Looking for adventures to test AttachLink in? Explore all my interactive stories and scenarios on AI Dungeon:  
+Looking for interactive adventures to test AttachLink in? Explore my playable scenarios on AI Dungeon:  
 👉 **[Nealverse's AI Dungeon Profile & Scenarios](https://play.aidungeon.com/profile?contentType=scenario&sort=updated)**
 
 ---
 
-## License & Open Source Permissions 📜
+## 📜 License & Open Source Permissions
 
-AttachLink is free, open-source, and licensed under the **[Creative Commons CC0 1.0 Universal (CC0 1.0) Public Domain Dedication](LICENSE)**.
+AttachLink is free, open-source, and dedicated to the public domain under the **[Creative Commons CC0 1.0 Universal (CC0 1.0) Public Domain Dedication](LICENSE)**.
 
-This means you are granted complete freedom worldwide to:
-- **Use & Play:** Embed AttachLink into any of your personal or publicly published AI Dungeon scenarios.
-- **Modify & Adapt:** Tweak the relationship algorithms, add new gauges, customize reflection cooldowns, or rewrite prompts to fit your fictional world.
-- **Distribute & Share:** Share your scenarios, scripts, or derivative works anywhere without restrictions.
-- **No Legal Strings Attached:** You are not legally required to ask for permission or include copyright notices, although crediting **AttachLink by Nealverse** or dropping a tip on [Ko-fi](https://ko-fi.com/nealverse) is always deeply appreciated! ❤️
+You have complete worldwide freedom to:
+- **Use & Play:** Embed AttachLink into any of your personal or publicly published scenarios.
+- **Modify & Adapt:** Customize stats, tweak relationship formulas, or rewrite reflection prompts.
+- **Distribute & Share:** Share scenarios, scripts, or derivative works anywhere without restrictions.
+- **No Legal Strings Attached:** Attribution is not legally required, though crediting **AttachLink by Nealverse** or tipping on [Ko-fi](https://ko-fi.com/nealverse) is warmly appreciated! ❤️
 
 ---
 
 <p align="center"><b>AttachLink v4.3</b> · Built for AI Dungeon with passion and care.</p>
-
