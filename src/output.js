@@ -51,13 +51,18 @@ var modifier = (text) => {
         });
       }
 
+      // Record reflection timestamp for party rotation
+      const charData = AttachLink.ensureCharacter(charName, state);
+      if (charData) {
+        charData.lastReflectedAction = (typeof info !== 'undefined' && info.actionCount) ? info.actionCount : 0;
+      }
+
       // Reset reflection state & flag to guarantee clean line jumps on continuation
       state.attachLink.turnsSinceReflection = 0;
       state.attachLink.isReflecting = false;
       state.attachLink.reflectingCharacter = null;
       state.attachLink.justReflected = true;
       
-      const charData = AttachLink.ensureCharacter(charName, state);
       const moodText = (charData && charData.mood) ? ` | Mood: ${charData.mood}` : "";
       const bondVal = charData ? (charData.bond > 0 ? `+${charData.bond}` : charData.bond) : "";
       const bondText = bondVal !== "" ? ` | Bond: ${bondVal}` : "";
@@ -66,6 +71,11 @@ var modifier = (text) => {
       
       // Override output with pause message
       cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "Companion"} reflected: Relationship updated${moodText}${bondText}${romanceText}! Press continue to resume the story. <<<\n\n`;
+
+      // Sync the reflected character's card immediately
+      if (charName) {
+        AttachLink.syncStoryCard(state, charName);
+      }
     } else {
       // If previous turn was a reflection pause or system notice, guarantee continuation starts on a fresh double-spaced paragraph
       if (state.attachLink && state.attachLink.justReflected) {
@@ -74,13 +84,6 @@ var modifier = (text) => {
       }
       // Secondary leak cleaner pass on normal story output to guarantee zero immersion breaks
       cleanedText = AttachLink.cleanContextLeaks(cleanedText);
-    }
-
-    // Sync updated Story Cards for all tracked characters
-    if (state.attachLink && state.attachLink.characters) {
-      for (var cName of Object.keys(state.attachLink.characters)) {
-        AttachLink.syncStoryCard(state, cName);
-      }
     }
 
     // Always update the live System Console Story Card!

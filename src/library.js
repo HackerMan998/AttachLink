@@ -5,7 +5,7 @@
 
 var AttachLinkConfig = {
   // 1. Dynamic Story Tone & Romance Presets
-  // Tone: "balanced" | "gritty" | "romance" | "political" (Can be edited in Story Cards or via /tone [mode])
+  // Tone: "balanced" | "gritty" | "romance" | "political" | "comedy" | "horror" (Can be edited in Story Cards or via /tone [mode])
   defaultTone: "balanced",
 
   // Romance Mode: "enabled" (show hearts) | "disabled" (pure loyalty/bond, no hearts)
@@ -134,6 +134,7 @@ var AttachLink = {
     if (typeof state.attachLink.reflectingCharacter === 'undefined') state.attachLink.reflectingCharacter = null;
     if (typeof state.attachLink.tone === 'undefined') state.attachLink.tone = AttachLinkConfig.defaultTone || "balanced";
     if (typeof state.attachLink.romanceMode === 'undefined') state.attachLink.romanceMode = AttachLinkConfig.defaultRomanceMode || "enabled";
+    if (typeof state.attachLink.cooldown === 'undefined') state.attachLink.cooldown = AttachLinkConfig.reflectionCooldown || 15;
 
     // Always purge any erroneously created non-character cards (locations, concepts, items)
     this.cleanupInvalidAttachLinkCards(state);
@@ -157,7 +158,7 @@ var AttachLink = {
     var toneMatch = consoleCard.entry.match(/(?:Story\s*)?Tone\s*:\s*([a-zA-Z]+)/i);
     if (toneMatch) {
       var t = toneMatch[1].toLowerCase();
-      if (["balanced", "gritty", "romance", "political"].includes(t)) {
+      if (["balanced", "gritty", "romance", "political", "comedy", "horror"].includes(t)) {
         state.attachLink.tone = t;
       }
     }
@@ -305,6 +306,7 @@ var AttachLink = {
 
       var rawCharName = match[1].replace(/['’]s$/i, '').trim();
       var charName = this.cleanCharacterName(rawCharName);
+      var isInvalid = false;
 
       // If explicitly specified in MANUAL_CHARACTERS, preserve it (case-insensitive)
       if (AttachLinkConfig.MANUAL_CHARACTERS && AttachLinkConfig.MANUAL_CHARACTERS.some(m => this.cleanCharacterName(m).toLowerCase() === charName.toLowerCase())) {
@@ -317,8 +319,6 @@ var AttachLink = {
 
       // Check if there is a base card that is explicitly a valid character card
       var baseCard = storyCards.find(c => c && c.title && !/AttachLink/i.test(c.title) && this.cleanCharacterName(c.title).toLowerCase() === charName.toLowerCase());
-
-      var isInvalid = false;
 
       // If the card title has a mangled/uncleaned sub-descriptor (e.g. "Anna - Behavior's AttachLink") purge it!
       if (rawCharName.toLowerCase() !== charName.toLowerCase()) {
@@ -370,6 +370,45 @@ var AttachLink = {
         }
       }
     }
+  },
+
+  // Untracks a character and removes their AttachLink companion card
+  untrackCharacter(name, state) {
+    if (!name) return null;
+    this.init(state);
+    var clean = this.cleanCharacterName(name);
+    var targetKey = Object.keys(state.attachLink.characters || {}).find(k => k.toLowerCase() === clean.toLowerCase()) || clean;
+
+    if (state.attachLink.characters) {
+      delete state.attachLink.characters[targetKey];
+      delete state.attachLink.characters[clean];
+    }
+    if (state.attachLink.candidates) {
+      delete state.attachLink.candidates[targetKey];
+      delete state.attachLink.candidates[clean];
+    }
+    if (state.attachLink.activeChar && state.attachLink.activeChar.toLowerCase() === clean.toLowerCase()) {
+      state.attachLink.activeChar = null;
+    }
+
+    if (typeof storyCards !== 'undefined' && Array.isArray(storyCards)) {
+      var cardTitle = `${clean}'s AttachLink`;
+      for (var i = storyCards.length - 1; i >= 0; i--) {
+        var c = storyCards[i];
+        if (c && (c.title === cardTitle || c.name === cardTitle || (c.title && c.title.toLowerCase().startsWith(clean.toLowerCase()) && /AttachLink/i.test(c.title)))) {
+          if (typeof removeStoryCard === 'function') {
+            try { removeStoryCard(i); } catch (e) {}
+          } else if (typeof deleteStoryCard === 'function') {
+            try { deleteStoryCard(i); } catch (e) {}
+          }
+          if (storyCards[i] === c) {
+            storyCards.splice(i, 1);
+          }
+        }
+      }
+    }
+    this.syncSystemConsoleCard(state);
+    return clean;
   },
 
   // Checks if a character's AttachLink story card already exists
@@ -662,6 +701,7 @@ var AttachLink = {
         thoughts: [],     // Monologue buffer
         coreMemory: "",   // Permanent consolidated foundation
         lastSeenAction: 0,
+        lastReflectedAction: 0,
         initialized: false
       };
     }
@@ -753,8 +793,12 @@ var AttachLink = {
       if (matches > 0) charData.lastSeenAction = currentAction;
       var turnsSinceSeen = currentAction - (charData.lastSeenAction || 0);
 
-      // Priority calculation: (Presence * 15) - (Absence Decay * 3)
-      var score = (matches * 15) - (turnsSinceSeen * 3);
+      // Multi-companion rotation bonus: companions who haven't reflected in a while get priority
+      var turnsSinceReflected = currentAction - (charData.lastReflectedAction || 0);
+      var reflectionBonus = Math.min(Math.floor(turnsSinceReflected / 3), 15);
+
+      // Priority calculation: (Presence * 15) - (Absence Decay * 3) + Reflection Bonus
+      var score = (matches * 15) - (turnsSinceSeen * 3) + reflectionBonus;
       if (AttachLinkConfig.MANUAL_CHARACTERS && AttachLinkConfig.MANUAL_CHARACTERS.includes(charName)) {
         score += 5;
       }
@@ -836,22 +880,34 @@ var AttachLink = {
       if (rawBond.startsWith("=")) {
         result.bond = parseInt(rawBond.slice(1), 10);
         result.isAbsoluteBond = true;
-      } else {
+      } else if (rawBond.startsWith("+") || rawBond.startsWith("-")) {
         result.bond = parseInt(rawBond, 10);
         result.isAbsoluteBond = false;
+      } else {
+        result.bond = parseInt(rawBond, 10);
+        result.isAbsoluteBond = true;
       }
     }
 
-    // 5. Extract Romance (supports: Romance: +1, Romance: [+1], Romance: 1/5, etc.)
-    var romanceMatch = text.match(/(?:Romance(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*([=+\-]?\s*\d+)/i);
-    if (romanceMatch) {
-      var rawRomance = romanceMatch[1].replace(/\s+/g, '');
-      if (rawRomance.startsWith("=")) {
-        result.romance = parseInt(rawRomance.slice(1), 10);
-        result.isAbsoluteRomance = true;
-      } else {
-        result.romance = parseInt(rawRomance, 10);
-        result.isAbsoluteRomance = false;
+    // 5. Extract Romance (supports: Romance: +1, Romance: [+1], Romance: 1/5, Romance: 3, etc.)
+    var romanceFractionMatch = text.match(/(?:Romance(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*(\d+)\s*\/\s*5/i);
+    if (romanceFractionMatch) {
+      result.romance = parseInt(romanceFractionMatch[1], 10);
+      result.isAbsoluteRomance = true;
+    } else {
+      var romanceMatch = text.match(/(?:Romance(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*([=+\-]?\s*\d+)/i);
+      if (romanceMatch) {
+        var rawRomance = romanceMatch[1].replace(/\s+/g, '');
+        if (rawRomance.startsWith("=")) {
+          result.romance = parseInt(rawRomance.slice(1), 10);
+          result.isAbsoluteRomance = true;
+        } else if (rawRomance.startsWith("+") || rawRomance.startsWith("-")) {
+          result.romance = parseInt(rawRomance, 10);
+          result.isAbsoluteRomance = false;
+        } else {
+          result.romance = parseInt(rawRomance, 10);
+          result.isAbsoluteRomance = true;
+        }
       }
     }
 
@@ -862,32 +918,47 @@ var AttachLink = {
     }
     var fullScene = (recentCorpus + " " + text).toLowerCase();
 
-    var isSexOrIntimacy = /\b(cock|pussy|dick|shaft|thrust\w*|inside (her|me|him|them)|cervix|wet|folds|naked|climax|orgasm|moan\w*|groan\w*|legs wide|tight walls|whimper\w*|sucking|blowjob|fellatio|condom|sex|making love|naked skin)\b/i.test(fullScene);
+    // Differentiate intimate scenes from combat / physical battle scenes
+    var isCombatScene = /\b(sword|blade|dagger|spear|arrow|wound|blood|combat|battle|stab\w*|shield|monster|goblin|orc|enemy)\b/i.test(fullScene);
+    var isSexOrIntimacy = !isCombatScene && /\b(cock|pussy|dick|cervix|naked body|undress\w*|climax|orgasm|erotic|blowjob|fellatio|making love|sexual\w*|intercourse|passionate kiss\w*|deep embrace|sensual)\b/i.test(fullScene);
+
+    // Check if romance is disabled in state or config
+    var isRomanceDisabled = (typeof state !== 'undefined' && state.attachLink && state.attachLink.romanceMode === "disabled") ||
+      (typeof AttachLinkConfig !== 'undefined' && AttachLinkConfig.defaultRomanceMode === "disabled");
 
     // If the model echoed dummy text or omitted a real monologue, generate an authentic thought based on the scene:
     if (!result.thought) {
-      if (isSexOrIntimacy) {
+      if (isSexOrIntimacy && !isRomanceDisabled) {
         result.thought = `Being so completely intimate together was intense... experiencing that vulnerability brings us closer.`;
       } else {
         result.thought = `Reflecting on recent events and keeping my own priorities in mind as things progress.`;
       }
     }
 
-    // Explicit sexual intimacy guarantee
+    // Explicit sexual intimacy guarantee (only when romance is enabled)
     if (isSexOrIntimacy) {
       if (result.bond === undefined || result.bond < 1) {
         result.bond = 1;
         result.isAbsoluteBond = false;
       }
-      if (result.romance === undefined || result.romance <= 0) {
-        result.romance = 1;
-        result.isAbsoluteRomance = false;
-      }
-      if (!result.mood || result.mood === "Neutral") {
-        result.mood = "Passionate";
-      }
-      if (!result.agenda) {
-        result.agenda = `Deepen our intimacy and explore what this connection means.`;
+      if (!isRomanceDisabled) {
+        if (result.romance === undefined || result.romance <= 0) {
+          result.romance = 1;
+          result.isAbsoluteRomance = false;
+        }
+        if (!result.mood || result.mood === "Neutral") {
+          result.mood = "Passionate";
+        }
+        if (!result.agenda) {
+          result.agenda = `Deepen our intimacy and explore what this connection means.`;
+        }
+      } else {
+        if (!result.mood || result.mood === "Neutral") {
+          result.mood = "Warm";
+        }
+        if (!result.agenda) {
+          result.agenda = `Protect and stand by our bond through whatever comes next.`;
+        }
       }
     }
 
@@ -932,8 +1003,9 @@ var AttachLink = {
       }
     }
 
-    // Romance (0 to 5): supports absolute set or delta adjustment
-    if (typeof deltas.romance === 'number' && !isNaN(deltas.romance)) {
+    // Romance (0 to 5): supports absolute set or delta adjustment (only when romance is enabled)
+    var isRomanceDisabled = (state.attachLink && state.attachLink.romanceMode === "disabled");
+    if (!isRomanceDisabled && typeof deltas.romance === 'number' && !isNaN(deltas.romance)) {
       if (deltas.isAbsoluteRomance) {
         charData.romance = Math.max(0, Math.min(5, deltas.romance));
       } else {
@@ -1084,7 +1156,7 @@ var AttachLink = {
 
     var cardNotes = this.buildCardNotes(charName);
     var aliases = this.getAliases(charName);
-    var keys = `${aliases.join(", ")}, ${cardTitle}, AttachLink, relationship, mind`;
+    var keys = `${aliases.join(", ")}, ${charName} AttachLink, ${charName} status, ${cardTitle}`;
     var type = "Character";
 
     var index = storyCards.findIndex(c => c && (c.title === cardTitle || c.name === cardTitle));
@@ -1126,7 +1198,7 @@ var AttachLink = {
 
     var cardTitle = "AttachLink System Console";
     var turns = (state.attachLink && state.attachLink.turnsSinceReflection) || 0;
-    var maxTurns = AttachLinkConfig.reflectionCooldown || 15;
+    var maxTurns = (state.attachLink && state.attachLink.cooldown) || AttachLinkConfig.reflectionCooldown || 15;
     var remaining = Math.max(0, maxTurns - turns);
     var active = (state.attachLink && state.attachLink.activeChar) || "None detected in current scene";
 
@@ -1155,25 +1227,31 @@ var AttachLink = {
     var cardContent = `[AttachLink Engine v4.5 - System Dashboard & Settings]\n` +
       `• Active NPC in Scene: ${active}\n` +
       `• Reflection Countdown: Turn ${turns} / ${maxTurns} (${remaining} turns until auto-pause)\n` +
-      `• Story Tone: ${toneTitle} (Edit to: Gritty | Balanced | Romance | Political)\n` +
+      `• Story Tone: ${toneTitle} (Edit to: Balanced | Gritty | Romance | Political | Comedy | Horror)\n` +
       `• Romance Track: ${romanceTitle} (Edit to: Enabled | Disabled)\n\n` +
       `[Tracked Relationships]\n` +
       `${charSection}\n\n` +
       `[Quick Commands]\n` +
-      `• /tone [mode]      : Set tone (e.g. /tone gritty, /tone romance, /tone balanced, /tone political)\n` +
+      `• /tone [mode]      : Set tone (balanced, gritty, romance, political, comedy, horror)\n` +
       `• /romance [on/off] : Toggle romance gauges globally (e.g. /romance off)\n` +
       `• /reflect [Name]   : Pause immediately to reflect on relationship\n` +
       `• /track [Name]     : Add an unlisted NPC to tracking\n` +
+      `• /untrack [Name]   : Remove NPC from tracking and delete card\n` +
+      `• /setbond [N] [v]  : Set or adjust bond (e.g. /setbond Mia +1 or /setbond Mia 4)\n` +
+      `• /setmood [N] [m]  : Set current mood (e.g. /setmood Mia Anxious)\n` +
+      `• /cooldown [turns] : Set reflection interval (e.g. /cooldown 10)\n` +
       `• /status           : Display current countdown and settings`;
 
     var cardNotes = `📖 [ATTACHLINK SYSTEM CONSOLE & SETTINGS GUIDE]\n` +
       `This system card allows you to customize AttachLink in real time!\n\n` +
       `⚙️ EDITABLE SETTINGS:\n` +
-      `1. Story Tone: Change to Gritty, Balanced, Romance, or Political.\n` +
-      `   • Gritty: High skepticism, consequence-driven grudges, slow trust.\n` +
+      `1. Story Tone: Change to Balanced, Gritty, Romance, Political, Comedy, or Horror.\n` +
       `   • Balanced: Natural human agency, fair boundaries, steady pacing.\n` +
+      `   • Gritty: High skepticism, consequence-driven grudges, slow trust.\n` +
       `   • Romance: Focus on emotional intimacy, passion, and chemistry.\n` +
       `   • Political: Transactional loyalties, leverage, and intrigue.\n` +
+      `   • Comedy: Playful banter, witty sarcasm, lighthearted dynamic.\n` +
+      `   • Horror: Paranoia, stress, psychological tension, fear responses.\n` +
       `2. Romance Track: Change to Enabled or Disabled (hides all heart meters).\n\n` +
       `(Consumes 0 prompt tokens during story generation).`;
 
@@ -1255,7 +1333,8 @@ AttachLink.fitContext = function(text, extraCharsNeeded = 300) {
 // 2. Multi-word leak cleaner: completely wipes leftover thought traces and system banners from text
 AttachLink.cleanContextLeaks = function(text) {
   if (!text) return "";
-  var cleaned = text.replace(/(?:^|\n)\s*[\(\[\*]*\s*[^:\n\r]+?(?:'s)?\s*AttachLink(?:\s*(?:Consolidation|Summary|Update))?\s*[:=\-][^\n]*\n*/gi, "\n\n");
+  // Clean single-line or multi-line AttachLink reflection outputs
+  var cleaned = text.replace(/(?:^|\n)\s*[\(\[\*]*\s*[^:\n\r]+?(?:'s)?\s*AttachLink(?:\s*(?:Consolidation|Summary|Update|Relationship Status))?\s*[:=\-][\s\S]*?(?:\)|\]|\n\n|$)/gi, "\n\n");
   // Clean any lingering pause menu notices or system banners from context so AI never sees or imitates them
   cleaned = cleaned.replace(/(?:^|\n)\s*>>>\s*[🧠💡]\s*\[AttachLink[^\]]*\][^\n<]*<<<\s*/gi, "\n\n");
   return cleaned.trim();

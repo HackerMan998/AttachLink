@@ -86,7 +86,7 @@ A live in-game dashboard story card showing active characters, turn countdowns, 
 [AttachLink Engine v4.5 - System Dashboard & Settings]
 • Active NPC in Scene: Mia
 • Reflection Countdown: Turn 8 / 15 (7 turns until auto-pause)
-• Story Tone: Balanced (Edit to: Gritty | Balanced | Romance | Political)
+• Story Tone: Balanced (Edit to: Balanced | Gritty | Romance | Political | Comedy | Horror)
 • Romance Track: Enabled (Edit to: Enabled | Disabled)
 
 [Tracked Relationships]
@@ -94,10 +94,15 @@ A live in-game dashboard story card showing active characters, turn countdowns, 
   • Gary: Bond +2 (Companion) | Romance 0/5 | Mood: Cordial
 
 [Quick Commands]
-• /tone [mode]      : Set tone (e.g. /tone gritty, /tone romance, /tone balanced, /tone political)
+• /tone [mode]      : Set tone (balanced, gritty, romance, political, comedy, horror)
 • /romance [on/off] : Toggle romance gauges globally (e.g. /romance off)
 • /reflect [Name]   : Pause immediately to reflect on relationship
 • /track [Name]     : Add an unlisted NPC to tracking
+• /untrack [Name]   : Remove an NPC from tracking and delete card
+• /setbond [N] [v]  : Set or adjust bond (e.g. /setbond Mia +1 or /setbond Mia 4)
+• /setmood [N] [m]  : Set current mood (e.g. /setmood Mia Anxious)
+• /cooldown [turns] : Set reflection interval (e.g. /cooldown 10)
+• /list             : View compact summary of all tracked NPCs
 • /status           : Display current countdown and settings
 ```
 
@@ -116,6 +121,8 @@ Change the psychological pacing on the fly with `/tone [mode]` or by editing the
 | **`gritty`** | **Cynical & consequence-driven.** NPCs prioritize survival, hold realistic grudges, and take deep offense to betrayal or abandonment (`Bond: -1 to -2`). Past abandonment is auto-detected from backstory (`Bond: -4`, `Resentful`). Trust must be bought in blood or sacrifice. | Grimdark, post-apocalyptic, zombie survival, dark fantasy. |
 | **`romance`** | **Emotional intimacy & passion.** Highlights fluttering hearts, blushing, vulnerability, and mutual attraction. Shared quiet moments stir chemistry. | Otome, romantic drama, dating sims, slice-of-life romance. |
 | **`political`** | **Faction leverage & transactional intrigue.** NPCs evaluate you through mutual utility, leverage, and faction rank. Secret agendas focus on personal ambition or power. | Court intrigue, cyberpunk corporate espionage, kingdom building. |
+| **`comedy`** | **Playful banter & comedic friction.** NPCs react with witty sarcasm, dynamic humor, and funny inner monologue observations. Bond shifts through hilarious or chaotic misadventures. | Comedy, anime-style adventures, lighthearted fantasy, buddy cop. |
+| **`horror`** | **Paranoia & psychological dread.** NPCs are on edge, wrestling with fear, survival stress, and dread. Trust is fragile and easily shaken by unnatural or unsettling events. | Survival horror, psychological thriller, cosmic horror, Eldritch mystery. |
 
 ---
 
@@ -162,11 +169,17 @@ Simply type these commands into the player action box during gameplay. AttachLin
 
 | Command | Example | Description |
 |:---|:---|:---|
-| **`/tone [mode]`** | `/tone gritty` | Sets story tone (`balanced`, `gritty`, `romance`, `political`). |
+| **`/tone [mode]`** | `/tone gritty` | Sets story tone (`balanced`, `gritty`, `romance`, `political`, `comedy`, `horror`). |
 | **`/romance [on/off]`** | `/romance off` | Globally toggles romance gauges and romantic reflection directives. |
 | **`/reflect`** | `/reflect` | Forces an immediate reflection pause for the active character in the current scene. |
 | **`/reflect [Name]`** | `/reflect Mia` | Triggers an immediate reflection for a specific companion by name. |
 | **`/track [Name]`** | `/track Vera` | Starts tracking an unlisted NPC and creates their companion card. |
+| **`/untrack [Name]`** | `/untrack Vera` | Stops tracking an NPC and deletes their companion card. |
+| **`/setbond [N] [v]`** | `/setbond Mia +1` | Directly sets or adjusts Bond (`+1`, `-2`, or absolute `4`). |
+| **`/setromance [N] [v]`** | `/setromance Mia 3` | Directly sets Romance stage (`0` to `5`). |
+| **`/setmood [N] [m]`** | `/setmood Mia Anxious` | Updates companion's current emotional mood. |
+| **`/cooldown [turns]`** | `/cooldown 10` | Sets the reflection turn frequency (default: 15). |
+| **`/list`** | `/list` | Displays a compact chat overview of all tracked party members. |
 | **`/status`** | `/status` | Displays active character, reflection countdown, story tone, and romance mode. |
 | **`/attachlink`** | `/al` | Displays a quick command reference guide in-game. |
 
@@ -205,17 +218,17 @@ var modifier = (text) => {
 
       var trimmed = text.trim();
 
-      // Command: /tone [mode] (e.g. /tone gritty, /tone romance, /tone balanced, /tone political)
+      // Command: /tone [mode] (e.g. /tone gritty, /tone romance, /tone balanced, /tone political, /tone comedy, /tone horror)
       var toneMatch = trimmed.match(/^\/?tone(?:\s+(.+))?$/i);
       if (toneMatch) {
         var chosenTone = toneMatch[1] ? toneMatch[1].trim().toLowerCase() : "";
-        if (["balanced", "gritty", "romance", "political"].includes(chosenTone)) {
+        if (["balanced", "gritty", "romance", "political", "comedy", "horror"].includes(chosenTone)) {
           state.attachLink.tone = chosenTone;
           AttachLink.syncSystemConsoleCard(state);
           state.message = `[AttachLink] Story Tone set to: ${chosenTone.toUpperCase()}.\n• Reflection directives and relationship dynamics updated.`;
         } else {
           var curTone = (state.attachLink && state.attachLink.tone) || "balanced";
-          state.message = `[AttachLink Tone] Current: ${curTone.toUpperCase()}\nUsage: /tone [balanced | gritty | romance | political]\n• gritty: Cynical, slow trust, betrayal tracking, harsh consequences.\n• balanced: Natural human behavior, fair boundaries, steady pacing.\n• romance: Emotional intimacy, passion, vulnerability, chemistry.\n• political: Transactional loyalties, faction leverage, intrigue.`;
+          state.message = `[AttachLink Tone] Current: ${curTone.toUpperCase()}\nUsage: /tone [balanced | gritty | romance | political | comedy | horror]\n• balanced: Natural human behavior, fair boundaries, steady pacing.\n• gritty: Cynical, slow trust, betrayal tracking, harsh consequences.\n• romance: Emotional intimacy, passion, vulnerability, chemistry.\n• political: Transactional loyalties, faction leverage, intrigue.\n• comedy: Playful banter, witty sarcasm, comedic friction.\n• horror: Psychological dread, paranoia, fear responses, fragile trust.`;
         }
         return { text: "", stop: true };
       }
@@ -259,10 +272,115 @@ var modifier = (text) => {
         return { text: "", stop: true };
       }
 
+      // Command: /untrack [Name] or /forget [Name]
+      var untrackMatch = trimmed.match(/^\/?(?:untrack|forget)(?:\s+(.+))?$/i);
+      if (untrackMatch) {
+        var targetName = untrackMatch[1] ? untrackMatch[1].trim() : (state.attachLink.activeChar || "");
+        if (targetName) {
+          var removed = AttachLink.untrackCharacter(targetName, state);
+          state.message = `[AttachLink] Stopped tracking "${removed || targetName}". Companion card removed.`;
+        } else {
+          state.message = `[AttachLink] Specify a character to untrack, e.g. /untrack Vera`;
+        }
+        return { text: "", stop: true };
+      }
+
+      // Command: /setbond [Name] [val] or /bond [Name] [val] (e.g. /setbond Mia +1 or /setbond Mia 4)
+      var bondCmdMatch = trimmed.match(/^\/?(?:setbond|bond)(?:\s+([a-zA-Z\s]+?))?\s+([=+\-]?\d+)$/i);
+      if (bondCmdMatch) {
+        var targetName = bondCmdMatch[1] ? bondCmdMatch[1].trim() : (state.attachLink.activeChar || "");
+        var rawVal = bondCmdMatch[2].trim();
+        if (targetName) {
+          var charData = AttachLink.ensureCharacter(targetName, state);
+          var actualName = charData ? charData.name : targetName;
+          var isAbsolute = !rawVal.startsWith("+") && !rawVal.startsWith("-");
+          var num = parseInt(rawVal.replace("=", ""), 10);
+          AttachLink.applyDeltas(state, actualName, { bond: num, isAbsoluteBond: isAbsolute });
+          AttachLink.syncStoryCard(state, actualName);
+          AttachLink.syncSystemConsoleCard(state);
+          state.message = `[AttachLink] ${actualName}'s Bond updated to: ${charData.bond > 0 ? '+' + charData.bond : charData.bond} (${AttachLinkConfig.bondLevels[charData.bond.toString()] || 'Neutral'})`;
+        } else {
+          state.message = `[AttachLink] Usage: /setbond [Name] [val] (e.g. /setbond Mia +1 or /setbond Mia 4)`;
+        }
+        return { text: "", stop: true };
+      }
+
+      // Command: /setromance [Name] [val] (e.g. /setromance Mia 3)
+      var romanceCmdMatch = trimmed.match(/^\/?(?:setromance|romanceval)(?:\s+([a-zA-Z\s]+?))?\s+([=+\-]?\d+)$/i);
+      if (romanceCmdMatch) {
+        var targetName = romanceCmdMatch[1] ? romanceCmdMatch[1].trim() : (state.attachLink.activeChar || "");
+        var rawVal = romanceCmdMatch[2].trim();
+        if (targetName) {
+          var charData = AttachLink.ensureCharacter(targetName, state);
+          var actualName = charData ? charData.name : targetName;
+          var isAbsolute = !rawVal.startsWith("+") && !rawVal.startsWith("-");
+          var num = parseInt(rawVal.replace("=", ""), 10);
+          AttachLink.applyDeltas(state, actualName, { romance: num, isAbsoluteRomance: isAbsolute });
+          AttachLink.syncStoryCard(state, actualName);
+          AttachLink.syncSystemConsoleCard(state);
+          state.message = `[AttachLink] ${actualName}'s Romance updated to: ${charData.romance}/5 (${AttachLinkConfig.romanceLevels[charData.romance.toString()] || 'Platonic'})`;
+        } else {
+          state.message = `[AttachLink] Usage: /setromance [Name] [val] (e.g. /setromance Mia 3 or /setromance Mia +1)`;
+        }
+        return { text: "", stop: true };
+      }
+
+      // Command: /setmood [Name] [Mood] (e.g. /setmood Mia Anxious)
+      var moodMatch = trimmed.match(/^\/?(?:setmood|mood)(?:\s+([a-zA-Z\s]+?))?\s*[:\-]\s*(.+)$/i) ||
+                      trimmed.match(/^\/?(?:setmood|mood)\s+([a-zA-Z]+)\s+([a-zA-Z\s]+)$/i);
+      if (moodMatch) {
+        var targetName = moodMatch[1] ? moodMatch[1].trim() : (state.attachLink.activeChar || "");
+        var newMood = moodMatch[2] ? moodMatch[2].trim() : "";
+        if (targetName && newMood) {
+          var charData = AttachLink.ensureCharacter(targetName, state);
+          var actualName = charData ? charData.name : targetName;
+          AttachLink.applyDeltas(state, actualName, { mood: newMood });
+          AttachLink.syncStoryCard(state, actualName);
+          AttachLink.syncSystemConsoleCard(state);
+          state.message = `[AttachLink] ${actualName}'s Mood updated to: ${charData.mood}`;
+        } else {
+          state.message = `[AttachLink] Usage: /setmood [Name] [Mood] (e.g. /setmood Mia Devoted)`;
+        }
+        return { text: "", stop: true };
+      }
+
+      // Command: /cooldown [turns] (e.g. /cooldown 10)
+      var cdMatch = trimmed.match(/^\/?cooldown(?:\s+(\d+))?$/i);
+      if (cdMatch) {
+        if (cdMatch[1]) {
+          var turns = Math.max(3, Math.min(50, parseInt(cdMatch[1], 10)));
+          state.attachLink.cooldown = turns;
+          AttachLink.syncSystemConsoleCard(state);
+          state.message = `[AttachLink] Reflection cooldown set to every ${turns} turns.`;
+        } else {
+          var curCd = (state.attachLink && state.attachLink.cooldown) || AttachLinkConfig.reflectionCooldown || 15;
+          state.message = `[AttachLink] Current reflection cooldown: every ${curCd} turns.\nUsage: /cooldown [number] (e.g. /cooldown 10)`;
+        }
+        return { text: "", stop: true };
+      }
+
+      // Command: /list or /party
+      if (trimmed.match(/^\/?(?:list|party|characters)$/i)) {
+        var charLines = [];
+        if (state.attachLink && state.attachLink.characters) {
+          for (var name in state.attachLink.characters) {
+            var d = state.attachLink.characters[name];
+            if (!d) continue;
+            var bSign = d.bond > 0 ? `+${d.bond}` : d.bond;
+            var bDesc = AttachLinkConfig.bondLevels[d.bond ? d.bond.toString() : "0"] || "Neutral";
+            var rPart = state.attachLink.romanceMode === "disabled" ? "" : ` | Romance: ${d.romance || 0}/5`;
+            charLines.push(`  • ${name}: Bond ${bSign} (${bDesc})${rPart} | Mood: ${d.mood || 'Neutral'}`);
+          }
+        }
+        var partySummary = charLines.length > 0 ? charLines.join("\n") : "  • No characters tracked yet. Create a Character Card or use /track [Name].";
+        state.message = `[AttachLink Tracked Party]\n${partySummary}`;
+        return { text: "", stop: true };
+      }
+
       // Command: /status or status
       if (trimmed.match(/^\/?status$/i)) {
         var turns = (state.attachLink && state.attachLink.turnsSinceReflection) || 0;
-        var maxTurns = AttachLinkConfig.reflectionCooldown || 15;
+        var maxTurns = (state.attachLink && state.attachLink.cooldown) || AttachLinkConfig.reflectionCooldown || 15;
         var remaining = Math.max(0, maxTurns - turns);
         var active = (state.attachLink && state.attachLink.activeChar) || "None";
         var tone = (state.attachLink && state.attachLink.tone) || "balanced";
@@ -283,10 +401,11 @@ var modifier = (text) => {
         if (targetName) {
           var charData = AttachLink.ensureCharacter(targetName, state);
           var actualName = charData ? charData.name : targetName;
+          var maxTurns = (state.attachLink && state.attachLink.cooldown) || AttachLinkConfig.reflectionCooldown || 15;
           state.attachLink.activeChar = actualName;
           state.attachLink.isReflecting = true;
           state.attachLink.reflectingCharacter = actualName;
-          state.attachLink.turnsSinceReflection = AttachLinkConfig.reflectionCooldown;
+          state.attachLink.turnsSinceReflection = maxTurns;
           AttachLink.syncSystemConsoleCard(state);
           // Return non-empty action so AI Dungeon executes reflection immediately without error!
           return { text: `[${actualName} reflects on recent events]` };
@@ -300,10 +419,16 @@ var modifier = (text) => {
       // Command: /attachlink or /al or /help
       if (trimmed.match(/^\/?(?:attachlink|al)(?:\s+help)?$/i)) {
         state.message = `[AttachLink Engine Commands]\n` +
-          `• /tone [mode]      : Set tone (balanced, gritty, romance, political)\n` +
+          `• /tone [mode]      : Set tone (balanced, gritty, romance, political, comedy, horror)\n` +
           `• /romance [on|off] : Enable or disable romance gauges globally\n` +
           `• /reflect [Name]   : Trigger immediate relationship reflection\n` +
           `• /track [Name]     : Add companion card for an unlisted NPC\n` +
+          `• /untrack [Name]   : Stop tracking an NPC and delete card\n` +
+          `• /setbond [N] [v]  : Set or adjust bond (e.g. /setbond Mia +1 or /setbond Mia 4)\n` +
+          `• /setromance [N] [v]: Set romance level (e.g. /setromance Mia 3)\n` +
+          `• /setmood [N] [m]  : Set companion mood (e.g. /setmood Mia Anxious)\n` +
+          `• /cooldown [turns] : Set reflection interval (e.g. /cooldown 10)\n` +
+          `• /list             : View compact summary of all tracked NPCs\n` +
           `• /status           : View current settings and countdown`;
         return { text: "", stop: true };
       }
@@ -356,9 +481,9 @@ var modifier = (text) => {
       // Inject relationship & cognitive context into frontMemory
       const emotionalContext = AttachLink.getPromptContext(state);
       if (typeof state.memory === 'string') {
-        if (!state.memory.includes("[AttachLink:")) {
-          state.memory = emotionalContext + (state.memory ? "\n" + state.memory : "");
-        }
+        // Strip any previous AttachLink block before injecting updated relationship context
+        state.memory = state.memory.replace(/\[AttachLink:[\s\S]*?\](?:\n\[[^\]]*Agenda:[\s\S]*?\])?(?:\n\[[^\]]*Impression:[\s\S]*?\])?\n?/i, '').trim();
+        state.memory = emotionalContext + (state.memory ? "\n" + state.memory : "");
       } else {
         state.memory = state.memory || {};
         state.memory.frontMemory = emotionalContext;
@@ -368,8 +493,9 @@ var modifier = (text) => {
       let taskPrompt = "";
       const isReflecting = state.attachLink && state.attachLink.isReflecting;
       const turns = (state.attachLink && state.attachLink.turnsSinceReflection) || 0;
+      const cooldown = (state.attachLink && state.attachLink.cooldown) || AttachLinkConfig.reflectionCooldown || 15;
 
-      if (isReflecting || (currentAction > 0 && turns >= AttachLinkConfig.reflectionCooldown)) {
+      if (isReflecting || (currentAction > 0 && turns >= cooldown)) {
         state.attachLink.isReflecting = true;
         state.attachLink.reflectingCharacter = state.attachLink.reflectingCharacter || targetChar;
 
@@ -383,6 +509,10 @@ var modifier = (text) => {
           toneDirectives = `• TONE: POLITICAL & INTRIGUE. ${targetChar} views relationships through faction loyalties, power, and leverage. Secret agendas focus on personal or faction gain. They may feign loyalty while preparing to switch sides if profitable.`;
         } else if (tone === "romance") {
           toneDirectives = `• TONE: ROMANCE & CHEMISTRY. Highlight emotional vulnerability, fluttering hearts, blushing, and romantic desire. Shared intimate moments stir deep attraction.`;
+        } else if (tone === "comedy") {
+          toneDirectives = `• TONE: COMEDY & BANTER. Highlight witty teasing, humorous skepticism, quirky inner observations, and comedic personality friction. Bond shifts naturally through hilarious or chaotic shared misadventures.`;
+        } else if (tone === "horror") {
+          toneDirectives = `• TONE: HORROR & PSYCHOLOGICAL DREAD. ${targetChar} is on edge, wrestling with paranoia, fear, and survival stress. Hidden agendas focus on staying alive or escaping dread. Trust is fragile and easily shaken by unnatural or unsettling behavior.`;
         } else {
           toneDirectives = `• TONE: BALANCED REALISM. ${targetChar} reacts authentically with independent agency, pride, and boundaries. Casual banter is Bond: +0. Trust is earned steadily over time.`;
         }
@@ -492,13 +622,18 @@ var modifier = (text) => {
         });
       }
 
+      // Record reflection timestamp for party rotation
+      const charData = AttachLink.ensureCharacter(charName, state);
+      if (charData) {
+        charData.lastReflectedAction = (typeof info !== 'undefined' && info.actionCount) ? info.actionCount : 0;
+      }
+
       // Reset reflection state & flag to guarantee clean line jumps on continuation
       state.attachLink.turnsSinceReflection = 0;
       state.attachLink.isReflecting = false;
       state.attachLink.reflectingCharacter = null;
       state.attachLink.justReflected = true;
       
-      const charData = AttachLink.ensureCharacter(charName, state);
       const moodText = (charData && charData.mood) ? ` | Mood: ${charData.mood}` : "";
       const bondVal = charData ? (charData.bond > 0 ? `+${charData.bond}` : charData.bond) : "";
       const bondText = bondVal !== "" ? ` | Bond: ${bondVal}` : "";
@@ -507,6 +642,11 @@ var modifier = (text) => {
       
       // Override output with pause message
       cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "Companion"} reflected: Relationship updated${moodText}${bondText}${romanceText}! Press continue to resume the story. <<<\n\n`;
+
+      // Sync the reflected character's card immediately
+      if (charName) {
+        AttachLink.syncStoryCard(state, charName);
+      }
     } else {
       // If previous turn was a reflection pause or system notice, guarantee continuation starts on a fresh double-spaced paragraph
       if (state.attachLink && state.attachLink.justReflected) {
@@ -515,13 +655,6 @@ var modifier = (text) => {
       }
       // Secondary leak cleaner pass on normal story output to guarantee zero immersion breaks
       cleanedText = AttachLink.cleanContextLeaks(cleanedText);
-    }
-
-    // Sync updated Story Cards for all tracked characters
-    if (state.attachLink && state.attachLink.characters) {
-      for (var cName of Object.keys(state.attachLink.characters)) {
-        AttachLink.syncStoryCard(state, cName);
-      }
     }
 
     // Always update the live System Console Story Card!
@@ -557,7 +690,7 @@ If you are a scenario creator, you can easily customize AttachLink at the very t
 ```javascript
 var AttachLinkConfig = {
   // 1. Dynamic Story Tone & Romance Presets
-  // Tone: "balanced" | "gritty" | "romance" | "political" (Can be edited in Story Cards or via /tone [mode])
+  // Tone: "balanced" | "gritty" | "romance" | "political" | "comedy" | "horror" (Can be edited in Story Cards or via /tone [mode])
   defaultTone: "balanced",
 
   // Romance Mode: "enabled" (show hearts) | "disabled" (pure loyalty/bond, no hearts)

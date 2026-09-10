@@ -25,9 +25,9 @@ var modifier = (text) => {
       // Inject relationship & cognitive context into frontMemory
       const emotionalContext = AttachLink.getPromptContext(state);
       if (typeof state.memory === 'string') {
-        if (!state.memory.includes("[AttachLink:")) {
-          state.memory = emotionalContext + (state.memory ? "\n" + state.memory : "");
-        }
+        // Strip any previous AttachLink block before injecting updated relationship context
+        state.memory = state.memory.replace(/\[AttachLink:[\s\S]*?\](?:\n\[[^\]]*Agenda:[\s\S]*?\])?(?:\n\[[^\]]*Impression:[\s\S]*?\])?\n?/i, '').trim();
+        state.memory = emotionalContext + (state.memory ? "\n" + state.memory : "");
       } else {
         state.memory = state.memory || {};
         state.memory.frontMemory = emotionalContext;
@@ -37,8 +37,9 @@ var modifier = (text) => {
       let taskPrompt = "";
       const isReflecting = state.attachLink && state.attachLink.isReflecting;
       const turns = (state.attachLink && state.attachLink.turnsSinceReflection) || 0;
+      const cooldown = (state.attachLink && state.attachLink.cooldown) || AttachLinkConfig.reflectionCooldown || 15;
 
-      if (isReflecting || (currentAction > 0 && turns >= AttachLinkConfig.reflectionCooldown)) {
+      if (isReflecting || (currentAction > 0 && turns >= cooldown)) {
         state.attachLink.isReflecting = true;
         state.attachLink.reflectingCharacter = state.attachLink.reflectingCharacter || targetChar;
 
@@ -52,6 +53,10 @@ var modifier = (text) => {
           toneDirectives = `• TONE: POLITICAL & INTRIGUE. ${targetChar} views relationships through faction loyalties, power, and leverage. Secret agendas focus on personal or faction gain. They may feign loyalty while preparing to switch sides if profitable.`;
         } else if (tone === "romance") {
           toneDirectives = `• TONE: ROMANCE & CHEMISTRY. Highlight emotional vulnerability, fluttering hearts, blushing, and romantic desire. Shared intimate moments stir deep attraction.`;
+        } else if (tone === "comedy") {
+          toneDirectives = `• TONE: COMEDY & BANTER. Highlight witty teasing, humorous skepticism, quirky inner observations, and comedic personality friction. Bond shifts naturally through hilarious or chaotic shared misadventures.`;
+        } else if (tone === "horror") {
+          toneDirectives = `• TONE: HORROR & PSYCHOLOGICAL DREAD. ${targetChar} is on edge, wrestling with paranoia, fear, and survival stress. Hidden agendas focus on staying alive or escaping dread. Trust is fragile and easily shaken by unnatural or unsettling behavior.`;
         } else {
           toneDirectives = `• TONE: BALANCED REALISM. ${targetChar} reacts authentically with independent agency, pride, and boundaries. Casual banter is Bond: +0. Trust is earned steadily over time.`;
         }
