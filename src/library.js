@@ -4,16 +4,23 @@
    ========================================================================== */
 
 var AttachLinkConfig = {
-  // 1. Manually specified characters (Supports multi-word names, e.g. ["Marie Onette"])
+  // 1. Dynamic Story Tone & Romance Presets
+  // Tone: "balanced" | "gritty" | "romance" | "political" (Can be edited in Story Cards or via /tone [mode])
+  defaultTone: "balanced",
+
+  // Romance Mode: "enabled" (show hearts) | "disabled" (pure loyalty/bond, no hearts)
+  defaultRomanceMode: "enabled",
+
+  // 2. Manually specified characters (Supports multi-word names, e.g. ["Marie Onette"])
   MANUAL_CHARACTERS: [""],
 
-  // 2. NPC Detection Scope
+  // 3. NPC Detection Scope
   // Set to false (default) so only real NPCs with Character Story Cards (or MANUAL_CHARACTERS) receive cards.
   // This prevents common story words like "Her", "And", "Pacific" from ever turning into cards!
   autoDiscoverUnlistedNPCs: false,
   NEW_NPC_SIGHTING_THRESHOLD: 10,
 
-  // 3. Automation Settings
+  // 4. Automation Settings
   autoDetectFromStoryCards: true, // Existing character cards are tracked immediately
   autoGenerateStoryCardsForExistingNPCs: true, // Immediately generate companion AttachLink cards for all detected NPCs
   reflectionCooldown: 15,        // Turns before an automatic relationship reflection pause
@@ -125,6 +132,8 @@ var AttachLink = {
     if (typeof state.attachLink.turnsSinceReflection === 'undefined') state.attachLink.turnsSinceReflection = 0;
     if (typeof state.attachLink.isReflecting === 'undefined') state.attachLink.isReflecting = false;
     if (typeof state.attachLink.reflectingCharacter === 'undefined') state.attachLink.reflectingCharacter = null;
+    if (typeof state.attachLink.tone === 'undefined') state.attachLink.tone = AttachLinkConfig.defaultTone || "balanced";
+    if (typeof state.attachLink.romanceMode === 'undefined') state.attachLink.romanceMode = AttachLinkConfig.defaultRomanceMode || "enabled";
 
     // Always purge any erroneously created non-character cards (locations, concepts, items)
     this.cleanupInvalidAttachLinkCards(state);
@@ -132,8 +141,36 @@ var AttachLink = {
     // On very first run, immediately generate AttachLink cards for all named character NPCs and system dashboard
     if (!state.attachLink.bootstrapped) {
       state.attachLink.bootstrapped = true;
+      this.readSettingsFromConsoleCard(state);
       this.bootstrapExistingNPCs(state);
       this.syncSystemConsoleCard(state);
+    }
+  },
+
+  // Reads player-edited settings directly from the in-game AttachLink System Console card
+  readSettingsFromConsoleCard(state) {
+    if (typeof storyCards === 'undefined' || !Array.isArray(storyCards)) return;
+    var consoleCard = storyCards.find(c => c && /AttachLink\s*System\s*Console/i.test(c.title || c.name || ""));
+    if (!consoleCard || !consoleCard.entry) return;
+
+    // Read Tone: e.g. "Story Tone: Gritty" or "Tone: Gritty"
+    var toneMatch = consoleCard.entry.match(/(?:Story\s*)?Tone\s*:\s*([a-zA-Z]+)/i);
+    if (toneMatch) {
+      var t = toneMatch[1].toLowerCase();
+      if (["balanced", "gritty", "romance", "political"].includes(t)) {
+        state.attachLink.tone = t;
+      }
+    }
+
+    // Read Romance Mode: e.g. "Romance Track: Disabled" or "Romance: Off"
+    var romanceMatch = consoleCard.entry.match(/Romance(?:\s*Track)?\s*:\s*([a-zA-Z]+)/i);
+    if (romanceMatch) {
+      var r = romanceMatch[1].toLowerCase();
+      if (["disabled", "off", "false", "hide", "hidden"].includes(r)) {
+        state.attachLink.romanceMode = "disabled";
+      } else if (["enabled", "on", "true", "show"].includes(r)) {
+        state.attachLink.romanceMode = "enabled";
+      }
     }
   },
 
@@ -423,6 +460,17 @@ var AttachLink = {
       return (cardText && regex.test(cardText)) || (essentialsText && regex.test(essentialsText)) || (openingText && regex.test(openingText));
     };
 
+    // 0. Abandonment / Past Betrayal / Bitter Grudge (High Consequence)
+    if (matchesPattern(/\b(abandoned|left behind|betrayed|deserted|forsaken|left to die|swore revenge|bitter grudge|resents you|blames you|seeks vengeance)\b/i)) {
+      result.bond = -4;
+      result.romance = 0;
+      result.mood = "Resentful";
+      result.coreMemory = `Holds a bitter grudge against you for being abandoned or betrayed in the past.`;
+      result.agenda = `Ensure self-preservation and make you face accountability for what happened.`;
+      result.inferred = true;
+      return result;
+    }
+
     // 1. Spousal / Married / Engaged
     if (matchesPattern(/\b(wife|husband|spouse|fianc[eé]e?|bride|groom|married to you|your wife|your husband)\b/i)) {
       result.bond = 4;
@@ -565,12 +613,15 @@ var AttachLink = {
     }
   },
 
-  // Manually force-refresh all tracked characters' story cards (e.g. after adding a new NPC)
+  // Manually force-refresh all tracked characters' story cards (e.g. after toggling romance or adding a new NPC)
   syncAllStoryCards(state) {
     if (typeof storyCards === 'undefined' || !Array.isArray(storyCards)) return;
     this.init(state);
-    var recognized = this.getRecognizedCharacters();
-    for (var name of recognized) {
+    var allNames = new Set(this.getRecognizedCharacters());
+    if (state.attachLink && state.attachLink.characters) {
+      Object.keys(state.attachLink.characters).forEach(n => allNames.add(n));
+    }
+    for (var name of allNames) {
       this.ensureCharacter(name, state);
       this.syncStoryCard(state, name);
     }
@@ -910,10 +961,12 @@ var AttachLink = {
 
     var charData = this.ensureCharacter(active, state);
     var bondDesc = AttachLinkConfig.bondLevels[charData.bond.toString()] || "Neutral";
-    var romanceDesc = AttachLinkConfig.romanceLevels[charData.romance.toString()] || "Platonic";
     var moodDesc = charData.mood || "Neutral";
+    var isRomanceDisabled = (state.attachLink && state.attachLink.romanceMode === "disabled");
+    var romanceDesc = AttachLinkConfig.romanceLevels[charData.romance.toString()] || "Platonic";
+    var romanceTag = isRomanceDisabled ? "" : ` | Romance: ${charData.romance}/5 (${romanceDesc})`;
 
-    var summary = `[AttachLink: ${active} | Mood: ${moodDesc} | Bond: ${charData.bond > 0 ? `+${charData.bond}` : charData.bond} (${bondDesc}) | Romance: ${charData.romance}/5 (${romanceDesc})]`;
+    var summary = `[AttachLink: ${active} | Mood: ${moodDesc} | Bond: ${charData.bond > 0 ? `+${charData.bond}` : charData.bond} (${bondDesc})${romanceTag}]`;
 
     if (charData.agenda) {
       summary += `\n[${active}'s Secret Agenda: "${charData.agenda}"]`;
@@ -1017,10 +1070,14 @@ var AttachLink = {
       }
     }
 
+    var isRomanceDisabled = (state.attachLink && state.attachLink.romanceMode === "disabled");
+    var romanceLine = isRomanceDisabled ? "" : `• Romance: ${this.renderRomanceBar(charData.romance)} (${charData.romance}/5) ${romanceDesc}\n`;
+
     var cardContent = `[${cardTitle} - Relationship Status]\n` +
       `• Mood: ${moodDesc}\n` +
       `• Bond: ${this.renderBondBar(charData.bond)} (${bondSign}) ${bondDesc}\n` +
-      `• Romance: ${this.renderRomanceBar(charData.romance)} (${charData.romance}/5) ${romanceDesc}\n\n` +
+      romanceLine +
+      (romanceLine ? "" : "\n") +
       agendaText +
       coreMemoryText +
       pastMemoriesText;
@@ -1062,7 +1119,7 @@ var AttachLink = {
     }
   },
 
-  // Live System Console Story Card: displays dashboard, countdown, and active character
+  // Live System Console Story Card: displays dashboard, countdown, settings, and active character
   syncSystemConsoleCard(state) {
     if (typeof storyCards === 'undefined' || !Array.isArray(storyCards)) return;
     this.init(state);
@@ -1073,15 +1130,18 @@ var AttachLink = {
     var remaining = Math.max(0, maxTurns - turns);
     var active = (state.attachLink && state.attachLink.activeChar) || "None detected in current scene";
 
+    var tone = (state.attachLink && state.attachLink.tone) || AttachLinkConfig.defaultTone || "balanced";
+    var romanceMode = (state.attachLink && state.attachLink.romanceMode) || AttachLinkConfig.defaultRomanceMode || "enabled";
+
     var charLines = [];
     if (state.attachLink && state.attachLink.characters) {
       for (var name in state.attachLink.characters) {
         var d = state.attachLink.characters[name];
         if (!d) continue;
         var bDesc = AttachLinkConfig.bondLevels[d.bond ? d.bond.toString() : "0"] || "Neutral";
-        var rDesc = AttachLinkConfig.romanceLevels[d.romance ? d.romance.toString() : "0"] || "Platonic";
         var bSign = d.bond > 0 ? `+${d.bond}` : d.bond;
-        charLines.push(`  • ${name}: Bond ${bSign} (${bDesc}) | Romance ${d.romance || 0}/5 (${rDesc}) | Mood: ${d.mood || 'Neutral'}`);
+        var rPart = romanceMode === "disabled" ? "" : ` | Romance ${d.romance || 0}/5`;
+        charLines.push(`  • ${name}: Bond ${bSign} (${bDesc})${rPart} | Mood: ${d.mood || 'Neutral'}`);
       }
     }
 
@@ -1089,20 +1149,32 @@ var AttachLink = {
       ? charLines.join("\n")
       : "  • (No characters tracked yet. Create a Character Story Card or type /track [Name])";
 
-    var cardContent = `[AttachLink Engine v4.3 - System Dashboard]\n` +
+    var toneTitle = tone.charAt(0).toUpperCase() + tone.slice(1);
+    var romanceTitle = romanceMode.charAt(0).toUpperCase() + romanceMode.slice(1);
+
+    var cardContent = `[AttachLink Engine v4.5 - System Dashboard & Settings]\n` +
       `• Active NPC in Scene: ${active}\n` +
       `• Reflection Countdown: Turn ${turns} / ${maxTurns} (${remaining} turns until auto-pause)\n` +
-      `• Tracking Mode: Character Story Cards & Manual Commands\n\n` +
+      `• Story Tone: ${toneTitle} (Edit to: Gritty | Balanced | Romance | Political)\n` +
+      `• Romance Track: ${romanceTitle} (Edit to: Enabled | Disabled)\n\n` +
       `[Tracked Relationships]\n` +
       `${charSection}\n\n` +
       `[Quick Commands]\n` +
-      `• /reflect [Name] : Pause immediately to reflect on relationship (e.g. /reflect Vera)\n` +
-      `• /track [Name]   : Add an unlisted NPC to tracking (e.g. /track Vera)\n` +
-      `• /status         : Display current countdown status in chat`;
+      `• /tone [mode]      : Set tone (e.g. /tone gritty, /tone romance, /tone balanced, /tone political)\n` +
+      `• /romance [on/off] : Toggle romance gauges globally (e.g. /romance off)\n` +
+      `• /reflect [Name]   : Pause immediately to reflect on relationship\n` +
+      `• /track [Name]     : Add an unlisted NPC to tracking\n` +
+      `• /status           : Display current countdown and settings`;
 
-    var cardNotes = `📖 [ATTACHLINK SYSTEM CONSOLE GUIDE]\n` +
-      `This system card provides a real-time status dashboard for AttachLink.\n` +
-      `It updates automatically every turn and tracks cooldowns and active characters.\n` +
+    var cardNotes = `📖 [ATTACHLINK SYSTEM CONSOLE & SETTINGS GUIDE]\n` +
+      `This system card allows you to customize AttachLink in real time!\n\n` +
+      `⚙️ EDITABLE SETTINGS:\n` +
+      `1. Story Tone: Change to Gritty, Balanced, Romance, or Political.\n` +
+      `   • Gritty: High skepticism, consequence-driven grudges, slow trust.\n` +
+      `   • Balanced: Natural human agency, fair boundaries, steady pacing.\n` +
+      `   • Romance: Focus on emotional intimacy, passion, and chemistry.\n` +
+      `   • Political: Transactional loyalties, leverage, and intrigue.\n` +
+      `2. Romance Track: Change to Enabled or Disabled (hides all heart meters).\n\n` +
       `(Consumes 0 prompt tokens during story generation).`;
 
     var keys = "AttachLink, AttachLink System, System Console, status, dashboard, console";

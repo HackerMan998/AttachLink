@@ -61,19 +61,20 @@ var modifier = (text) => {
       const moodText = (charData && charData.mood) ? ` | Mood: ${charData.mood}` : "";
       const bondVal = charData ? (charData.bond > 0 ? `+${charData.bond}` : charData.bond) : "";
       const bondText = bondVal !== "" ? ` | Bond: ${bondVal}` : "";
+      const isRomanceDisabled = (state.attachLink && state.attachLink.romanceMode === "disabled");
+      const romanceText = (!isRomanceDisabled && charData && typeof charData.romance !== 'undefined') ? ` | Romance: ${charData.romance}/5` : "";
       
       // Override output with pause message
-      cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "Companion"} reflected: Relationship updated${moodText}${bondText}! Press continue to resume the story. <<<\n\n`;
+      cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "Companion"} reflected: Relationship updated${moodText}${bondText}${romanceText}! Press continue to resume the story. <<<\n\n`;
     } else {
       // If previous turn was a reflection pause or system notice, guarantee continuation starts on a fresh double-spaced paragraph
       if (state.attachLink && state.attachLink.justReflected) {
         state.attachLink.justReflected = false;
         cleanedText = "\n\n" + cleanedText.trimStart();
       }
+      // Secondary leak cleaner pass on normal story output to guarantee zero immersion breaks
+      cleanedText = AttachLink.cleanContextLeaks(cleanedText);
     }
-
-    // Secondary leak cleaner pass to guarantee zero immersion breaks
-    cleanedText = AttachLink.cleanContextLeaks(cleanedText);
 
     // Sync updated Story Cards for all tracked characters
     if (state.attachLink && state.attachLink.characters) {

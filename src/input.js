@@ -2,11 +2,48 @@ var modifier = (text) => {
   try {
     if (typeof AttachLink !== 'undefined') {
       AttachLink.init(state);
+      AttachLink.readSettingsFromConsoleCard(state);
 
       // 1. Identify active character in the scene
       AttachLink.resolveActiveCharacter(state, history);
 
       var trimmed = text.trim();
+
+      // Command: /tone [mode] (e.g. /tone gritty, /tone romance, /tone balanced, /tone political)
+      var toneMatch = trimmed.match(/^\/?tone(?:\s+(.+))?$/i);
+      if (toneMatch) {
+        var chosenTone = toneMatch[1] ? toneMatch[1].trim().toLowerCase() : "";
+        if (["balanced", "gritty", "romance", "political"].includes(chosenTone)) {
+          state.attachLink.tone = chosenTone;
+          AttachLink.syncSystemConsoleCard(state);
+          state.message = `[AttachLink] Story Tone set to: ${chosenTone.toUpperCase()}.\n• Reflection directives and relationship dynamics updated.`;
+        } else {
+          var curTone = (state.attachLink && state.attachLink.tone) || "balanced";
+          state.message = `[AttachLink Tone] Current: ${curTone.toUpperCase()}\nUsage: /tone [balanced | gritty | romance | political]\n• gritty: Cynical, slow trust, betrayal tracking, harsh consequences.\n• balanced: Natural human behavior, fair boundaries, steady pacing.\n• romance: Emotional intimacy, passion, vulnerability, chemistry.\n• political: Transactional loyalties, faction leverage, intrigue.`;
+        }
+        return { text: "", stop: true };
+      }
+
+      // Command: /romance [on|off] (e.g. /romance off, /romance on)
+      var romanceMatch = trimmed.match(/^\/?romance(?:\s+(.+))?$/i);
+      if (romanceMatch) {
+        var arg = romanceMatch[1] ? romanceMatch[1].trim().toLowerCase() : "";
+        if (["off", "disable", "disabled", "hide", "hidden"].includes(arg)) {
+          state.attachLink.romanceMode = "disabled";
+          AttachLink.syncAllStoryCards(state);
+          AttachLink.syncSystemConsoleCard(state);
+          state.message = `[AttachLink] Romance Track DISABLED.\n• Heart gauges and romance directives hidden globally across all cards.`;
+        } else if (["on", "enable", "enabled", "show"].includes(arg)) {
+          state.attachLink.romanceMode = "enabled";
+          AttachLink.syncAllStoryCards(state);
+          AttachLink.syncSystemConsoleCard(state);
+          state.message = `[AttachLink] Romance Track ENABLED.\n• Heart gauges and romantic chemistry active.`;
+        } else {
+          var curRomance = (state.attachLink && state.attachLink.romanceMode) || "enabled";
+          state.message = `[AttachLink Romance] Currently: ${curRomance.toUpperCase()}\nUsage: /romance [on | off]\n• on: Shows heart gauges and tracks romantic chemistry.\n• off: Completely removes romance from all story cards and reflection directives.`;
+        }
+        return { text: "", stop: true };
+      }
 
       // Command: /track [Name] (e.g. /track Vera or track Vera)
       var trackMatch = trimmed.match(/^\/?track(?:\s+(.+))?$/i);
@@ -32,7 +69,9 @@ var modifier = (text) => {
         var maxTurns = AttachLinkConfig.reflectionCooldown || 15;
         var remaining = Math.max(0, maxTurns - turns);
         var active = (state.attachLink && state.attachLink.activeChar) || "None";
-        state.message = `[AttachLink Status] Active NPC: "${active}" | Turn ${turns}/${maxTurns} (${remaining} turns until auto-pause)`;
+        var tone = (state.attachLink && state.attachLink.tone) || "balanced";
+        var romance = (state.attachLink && state.attachLink.romanceMode) || "enabled";
+        state.message = `[AttachLink Status] Active NPC: "${active}" | Turn ${turns}/${maxTurns} (${remaining} until auto-pause) | Tone: ${tone.toUpperCase()} | Romance: ${romance.toUpperCase()}`;
         AttachLink.syncSystemConsoleCard(state);
         return { text: "", stop: true };
       }
@@ -60,6 +99,17 @@ var modifier = (text) => {
           AttachLink.syncSystemConsoleCard(state);
           return { text: "", stop: true };
         }
+      }
+
+      // Command: /attachlink or /al or /help
+      if (trimmed.match(/^\/?(?:attachlink|al)(?:\s+help)?$/i)) {
+        state.message = `[AttachLink Engine Commands]\n` +
+          `• /tone [mode]      : Set tone (balanced, gritty, romance, political)\n` +
+          `• /romance [on|off] : Enable or disable romance gauges globally\n` +
+          `• /reflect [Name]   : Trigger immediate relationship reflection\n` +
+          `• /track [Name]     : Add companion card for an unlisted NPC\n` +
+          `• /status           : View current settings and countdown`;
+        return { text: "", stop: true };
       }
 
       // Normal turn: increment turn counter

@@ -19,7 +19,7 @@
   <a href="#-overview">Overview</a> •
   <a href="#-how-it-works">How It Works</a> •
   <a href="#-what-it-looks-like-in-game">In-Game Cards</a> •
-  <a href="#-relationship-tracks">Relationship Tracks</a> •
+  <a href="#-relationship-tracks--story-tones">Tracks & Tones</a> •
   <a href="#-in-game-commands">Commands</a> •
   <a href="#-quick-installation-guide">Installation</a> •
   <a href="#-creator-settings">Settings</a> •
@@ -30,15 +30,17 @@
 
 ## 🌟 Overview
 
-**AttachLink** is an advanced relationship, cognitive memory, and emotional chemistry engine designed specifically for **AI Dungeon**.
+**AttachLink** is an advanced relationship, cognitive memory, and dynamic tone engine designed specifically for **AI Dungeon**.
 
-In default AI Dungeon, companions can easily forget what happened a few turns ago or act generic over long adventures. **AttachLink** gives your story's characters:
-- **Their Own Private Minds:** Personal first-person impressions and shifting moods that react to your actions.
-- **Hidden Agendas:** Secret desires and goals that steer how they treat you.
-- **Dual-Track Progression:** Independent tracking for **Trust & Friendship** (Bond) and **Romantic Passion** (Romance).
-- **Milestone Memories:** A growing timeline of shared memories preserved right on their Story Cards.
+In default AI Dungeon, companions can easily act generic, sycophantic, or forget recent events over long adventures. **AttachLink** gives your story's characters:
+- **Their Own Private Minds:** Personal first-person inner monologues and shifting moods that react to your actions.
+- **Hidden Agendas & Independent Agency:** Secret desires and personal goals that steer how they treat you.
+- **Dynamic Story Tone:** Switch between **Balanced**, **Gritty** (slow trust, betrayal tracking, realistic grudges), **Romance**, or **Political** (intrigue, leverage) at any time.
+- **Toggleable Romance Track:** Fully enable romantic chemistry with heart meters, or completely disable romance for pure platonic/grimdark survival.
+- **Dual-Track Progression:** Independent tracking for **Trust & Friendship** (Bond -5 to +5) and **Romantic Passion** (Romance 0 to 5).
+- **Milestone Memories:** A growing chronological timeline of shared memories preserved right on their Story Cards.
 
-Whether you're exploring high-fantasy dungeons, surviving gritty sci-fi, or playing a cozy romance, your companions will truly feel alive.
+Whether you're exploring high-fantasy dungeons, surviving gritty grimdark worlds, or playing a cozy romance, your companions will truly feel alive.
 
 ---
 
@@ -46,11 +48,12 @@ Whether you're exploring high-fantasy dungeons, surviving gritty sci-fi, or play
 
 AttachLink works quietly behind the scenes without interrupting your narrative flow:
 
-1. **Automatic Detection (Turn 0):** On the very first turn, it automatically reads your scenario's existing character story cards and opening text. Companions are tracked right from the start!
+1. **Automatic Detection & Grudge Calibration (Turn 0):** On the very first turn, it automatically reads your scenario's existing character story cards and opening lore. If a character was abandoned or betrayed in the backstory, AttachLink automatically bootstraps them with realistic animosity (`Bond: -4`, `Mood: Resentful`).
 2. **The 15-Turn Pause Menu:** Every 15 turns (or whenever you type `/reflect`), the story temporarily pauses. The companion steps into their own mind, reflects on recent events, writes an authentic inner monologue, and updates their relationship stats.
-3. **Intimacy & Combat Awareness:** Shared romance, physical intimacy, sex, or surviving life-or-death battles dynamically surge both Bond and Romance levels.
-4. **Memory History Timeline:** Past reflections are saved to a chronological `[Memory History]` log on the companion's card.
-5. **Zero Immersion Leaks:** Internal commands and thinking prompts are cleanly swallowed—they will never clutter your story text.
+3. **Dynamic Tone Directives:** Directives adapt to your chosen tone (e.g. Gritty enforces harsh skepticism, while Political prioritizes leverage).
+4. **Intimacy & Combat Awareness:** Shared romance, physical intimacy, or surviving life-or-death battles dynamically surge relationship levels.
+5. **Real-Time In-Game Customization:** Adjust story tone or toggle romance on/off anytime using slash commands or editing the in-game System Console Story Card!
+6. **Zero Immersion Leaks:** Internal commands and reflection prompts are cleanly swallowed—they will never clutter your story text.
 
 ---
 
@@ -74,28 +77,47 @@ Core Impression: "Being so close to them makes me feel truly safe. When they hel
 • "They listened to me by the campfire when no one else would."
 • "A bit reckless, but they kept their promise to protect our village."
 ```
+*(Note: When Romance Mode is disabled, the Romance gauge is completely hidden for a pure platonic adventure!)*
 
-### 2. Live System Console Card
-A handy in-game dashboard story card showing active characters and turn countdowns:
+### 2. Live System Console & Settings Card
+A live in-game dashboard story card showing active characters, turn countdowns, and live-editable settings:
 
 ```text
-[AttachLink System Console]
-Status: Active
-Active Companion: Mia
-Turn Progress: 8/15 turns until next automatic reflection pause
+[AttachLink Engine v4.5 - System Dashboard & Settings]
+• Active NPC in Scene: Mia
+• Reflection Countdown: Turn 8 / 15 (7 turns until auto-pause)
+• Story Tone: Balanced (Edit to: Gritty | Balanced | Romance | Political)
+• Romance Track: Enabled (Edit to: Enabled | Disabled)
 
-Tracked Companions:
-• Mia: Bond +5 | Romance 5/5 (Devoted)
-• Gary: Bond +2 | Romance 0/5 (Cordial)
+[Tracked Relationships]
+  • Mia: Bond +5 (Inseparable) | Romance 5/5 | Mood: Devoted
+  • Gary: Bond +2 (Companion) | Romance 0/5 | Mood: Cordial
 
-Commands: /reflect, /reflect [Name], /track [Name], /status
+[Quick Commands]
+• /tone [mode]      : Set tone (e.g. /tone gritty, /tone romance, /tone balanced, /tone political)
+• /romance [on/off] : Toggle romance gauges globally (e.g. /romance off)
+• /reflect [Name]   : Pause immediately to reflect on relationship
+• /track [Name]     : Add an unlisted NPC to tracking
+• /status           : Display current countdown and settings
 ```
 
 ---
 
-## 📊 Relationship Tracks
+## 📊 Relationship Tracks & Story Tones
 
-AttachLink separates emotional friendship from romantic attraction so relationships develop naturally:
+AttachLink lets you tailor your adventure's psychological realism to your exact preferences:
+
+### 🎭 Dynamic Story Tone Presets
+Change the psychological pacing on the fly with `/tone [mode]` or by editing the `Story Tone:` line in the **AttachLink System Console** story card:
+
+| Tone | Pacing & Behavior | Best For |
+|:---:|:---|:---|
+| **`balanced`** *(Default)* | Natural human realism, healthy boundaries, and steady pacing. Companions form bonds through shared deeds; casual banter is `Bond: +0`. | High fantasy, slice-of-life, sci-fi adventures. |
+| **`gritty`** | **Cynical & consequence-driven.** NPCs prioritize survival, hold realistic grudges, and take deep offense to betrayal or abandonment (`Bond: -1 to -2`). Past abandonment is auto-detected from backstory (`Bond: -4`, `Resentful`). Trust must be bought in blood or sacrifice. | Grimdark, post-apocalyptic, zombie survival, dark fantasy. |
+| **`romance`** | **Emotional intimacy & passion.** Highlights fluttering hearts, blushing, vulnerability, and mutual attraction. Shared quiet moments stir chemistry. | Otome, romantic drama, dating sims, slice-of-life romance. |
+| **`political`** | **Faction leverage & transactional intrigue.** NPCs evaluate you through mutual utility, leverage, and faction rank. Secret agendas focus on personal ambition or power. | Court intrigue, cyberpunk corporate espionage, kingdom building. |
+
+---
 
 ### 🤝 The Bond Track (-5 to +5)
 *Measures friendship, loyalty, respect, and mutual trust:*
@@ -103,7 +125,7 @@ AttachLink separates emotional friendship from romantic attraction so relationsh
 | Level | Visual Gauge | Standing | What It Means |
 |:---:|:---:|:---|:---|
 | **-5** | `[◄◄◄◄◄ │ ─────]` | **Sworn Nemesis** | Lethal hatred, mortal enmity, and vengeful hostility. |
-| **-4** | `[◄◄◄◄─ │ ─────]` | **Bitter Foe** | Active animosity, malicious sabotage, and bitterness. |
+| **-4** | `[◄◄◄◄─ │ ─────]` | **Bitter Foe** | Active animosity, malicious sabotage, and bitterness (e.g. past abandonment). |
 | **-3** | `[◄◄◄── │ ─────]` | **Open Adversary** | Constant friction, open rivalry, and active defiance. |
 | **-2** | `[◄◄─── │ ─────]` | **Unfriendly** | Cold dislike, social tension, and guarded irritation. |
 | **-1** | `[◄──── │ ─────]` | **Distrustful** | Skeptical of your motives and guarded with personal info. |
@@ -116,7 +138,7 @@ AttachLink separates emotional friendship from romantic attraction so relationsh
 
 ---
 
-### 💖 The Romance Track (0 to 5)
+### 💖 The Romance Track (0 to 5) & Non-Romance Mode
 *Measures romantic attraction, desire, emotional chemistry, and physical intimacy:*
 
 | Stage | Hearts Gauge | Relationship | What It Means |
@@ -128,6 +150,10 @@ AttachLink separates emotional friendship from romantic attraction so relationsh
 | **4/5** | `[♥♥♥♥♡]` | **Deep Devotion** | Intense love, physical and emotional commitment, and profound passion. |
 | **5/5** | `[♥♥♥♥♥]` | **Eternal Soulmates** | Timeless, unbreakable love and total romantic devotion. |
 
+> 🚫 **Pure Platonic / Non-Romance Gameplay:**  
+> Don't want romance in your scenario? Type **`/romance off`** or edit `Romance Track: Disabled` in the System Console card!  
+> AttachLink will **completely strip heart meters and romantic directives** from all cards and AI prompts, ensuring the AI strictly focuses on friendship, survival, and loyalty without unwanted flirting. Type **`/romance on`** anytime to restore it.
+
 ---
 
 ## 💬 In-Game Commands
@@ -136,10 +162,13 @@ Simply type these commands into the player action box during gameplay. AttachLin
 
 | Command | Example | Description |
 |:---|:---|:---|
+| **`/tone [mode]`** | `/tone gritty` | Sets story tone (`balanced`, `gritty`, `romance`, `political`). |
+| **`/romance [on/off]`** | `/romance off` | Globally toggles romance gauges and romantic reflection directives. |
 | **`/reflect`** | `/reflect` | Forces an immediate reflection pause for the active character in the current scene. |
 | **`/reflect [Name]`** | `/reflect Mia` | Triggers an immediate reflection for a specific companion by name. |
 | **`/track [Name]`** | `/track Vera` | Starts tracking an unlisted NPC and creates their companion card. |
-| **`/status`** | `/status` | Displays the active character and turns remaining until the next automatic reflection. |
+| **`/status`** | `/status` | Displays active character, reflection countdown, story tone, and romance mode. |
+| **`/attachlink`** | `/al` | Displays a quick command reference guide in-game. |
 
 ---
 
@@ -169,11 +198,48 @@ var modifier = (text) => {
   try {
     if (typeof AttachLink !== 'undefined') {
       AttachLink.init(state);
+      AttachLink.readSettingsFromConsoleCard(state);
 
       // 1. Identify active character in the scene
       AttachLink.resolveActiveCharacter(state, history);
 
       var trimmed = text.trim();
+
+      // Command: /tone [mode] (e.g. /tone gritty, /tone romance, /tone balanced, /tone political)
+      var toneMatch = trimmed.match(/^\/?tone(?:\s+(.+))?$/i);
+      if (toneMatch) {
+        var chosenTone = toneMatch[1] ? toneMatch[1].trim().toLowerCase() : "";
+        if (["balanced", "gritty", "romance", "political"].includes(chosenTone)) {
+          state.attachLink.tone = chosenTone;
+          AttachLink.syncSystemConsoleCard(state);
+          state.message = `[AttachLink] Story Tone set to: ${chosenTone.toUpperCase()}.\n• Reflection directives and relationship dynamics updated.`;
+        } else {
+          var curTone = (state.attachLink && state.attachLink.tone) || "balanced";
+          state.message = `[AttachLink Tone] Current: ${curTone.toUpperCase()}\nUsage: /tone [balanced | gritty | romance | political]\n• gritty: Cynical, slow trust, betrayal tracking, harsh consequences.\n• balanced: Natural human behavior, fair boundaries, steady pacing.\n• romance: Emotional intimacy, passion, vulnerability, chemistry.\n• political: Transactional loyalties, faction leverage, intrigue.`;
+        }
+        return { text: "", stop: true };
+      }
+
+      // Command: /romance [on|off] (e.g. /romance off, /romance on)
+      var romanceMatch = trimmed.match(/^\/?romance(?:\s+(.+))?$/i);
+      if (romanceMatch) {
+        var arg = romanceMatch[1] ? romanceMatch[1].trim().toLowerCase() : "";
+        if (["off", "disable", "disabled", "hide", "hidden"].includes(arg)) {
+          state.attachLink.romanceMode = "disabled";
+          AttachLink.syncAllStoryCards(state);
+          AttachLink.syncSystemConsoleCard(state);
+          state.message = `[AttachLink] Romance Track DISABLED.\n• Heart gauges and romance directives hidden globally across all cards.`;
+        } else if (["on", "enable", "enabled", "show"].includes(arg)) {
+          state.attachLink.romanceMode = "enabled";
+          AttachLink.syncAllStoryCards(state);
+          AttachLink.syncSystemConsoleCard(state);
+          state.message = `[AttachLink] Romance Track ENABLED.\n• Heart gauges and romantic chemistry active.`;
+        } else {
+          var curRomance = (state.attachLink && state.attachLink.romanceMode) || "enabled";
+          state.message = `[AttachLink Romance] Currently: ${curRomance.toUpperCase()}\nUsage: /romance [on | off]\n• on: Shows heart gauges and tracks romantic chemistry.\n• off: Completely removes romance from all story cards and reflection directives.`;
+        }
+        return { text: "", stop: true };
+      }
 
       // Command: /track [Name] (e.g. /track Vera or track Vera)
       var trackMatch = trimmed.match(/^\/?track(?:\s+(.+))?$/i);
@@ -199,7 +265,9 @@ var modifier = (text) => {
         var maxTurns = AttachLinkConfig.reflectionCooldown || 15;
         var remaining = Math.max(0, maxTurns - turns);
         var active = (state.attachLink && state.attachLink.activeChar) || "None";
-        state.message = `[AttachLink Status] Active NPC: "${active}" | Turn ${turns}/${maxTurns} (${remaining} turns until auto-pause)`;
+        var tone = (state.attachLink && state.attachLink.tone) || "balanced";
+        var romance = (state.attachLink && state.attachLink.romanceMode) || "enabled";
+        state.message = `[AttachLink Status] Active NPC: "${active}" | Turn ${turns}/${maxTurns} (${remaining} until auto-pause) | Tone: ${tone.toUpperCase()} | Romance: ${romance.toUpperCase()}`;
         AttachLink.syncSystemConsoleCard(state);
         return { text: "", stop: true };
       }
@@ -227,6 +295,17 @@ var modifier = (text) => {
           AttachLink.syncSystemConsoleCard(state);
           return { text: "", stop: true };
         }
+      }
+
+      // Command: /attachlink or /al or /help
+      if (trimmed.match(/^\/?(?:attachlink|al)(?:\s+help)?$/i)) {
+        state.message = `[AttachLink Engine Commands]\n` +
+          `• /tone [mode]      : Set tone (balanced, gritty, romance, political)\n` +
+          `• /romance [on|off] : Enable or disable romance gauges globally\n` +
+          `• /reflect [Name]   : Trigger immediate relationship reflection\n` +
+          `• /track [Name]     : Add companion card for an unlisted NPC\n` +
+          `• /status           : View current settings and countdown`;
+        return { text: "", stop: true };
       }
 
       // Normal turn: increment turn counter
@@ -262,6 +341,7 @@ var modifier = (text) => {
     }
 
     AttachLink.init(state);
+    AttachLink.readSettingsFromConsoleCard(state);
 
     // 2. Identify active character or manual reflection target
     const activeChar = AttachLink.resolveActiveCharacter(state, history);
@@ -292,19 +372,43 @@ var modifier = (text) => {
       if (isReflecting || (currentAction > 0 && turns >= AttachLinkConfig.reflectionCooldown)) {
         state.attachLink.isReflecting = true;
         state.attachLink.reflectingCharacter = state.attachLink.reflectingCharacter || targetChar;
+
+        const tone = (state.attachLink && state.attachLink.tone) || AttachLinkConfig.defaultTone || "balanced";
+        const isRomanceDisabled = (state.attachLink && state.attachLink.romanceMode === "disabled");
+
+        let toneDirectives = "";
+        if (tone === "gritty") {
+          toneDirectives = `• TONE: GRITTY & CYNICAL. ${targetChar} prioritizes survival and holds realistic grudges. Any past abandonment, selfishness, or deception incurs sharp Bond penalties (-1 to -2) and lasting resentment. Casual chat is strictly Bond: +0. Trust requires proven sacrifice or shared blood.`;
+        } else if (tone === "political") {
+          toneDirectives = `• TONE: POLITICAL & INTRIGUE. ${targetChar} views relationships through faction loyalties, power, and leverage. Secret agendas focus on personal or faction gain. They may feign loyalty while preparing to switch sides if profitable.`;
+        } else if (tone === "romance") {
+          toneDirectives = `• TONE: ROMANCE & CHEMISTRY. Highlight emotional vulnerability, fluttering hearts, blushing, and romantic desire. Shared intimate moments stir deep attraction.`;
+        } else {
+          toneDirectives = `• TONE: BALANCED REALISM. ${targetChar} reacts authentically with independent agency, pride, and boundaries. Casual banter is Bond: +0. Trust is earned steadily over time.`;
+        }
+
+        let romanceRule = isRomanceDisabled
+          ? `• Romance: DISABLED (Do not evaluate or output Romance; focus purely on Bond, Loyalty, and Mood).`
+          : `• Romance (+1): Earned ONLY through explicit romantic chemistry, flirtation, or mutual intimacy. Never advance romance from casual talk.`;
+
+        let formatSnippet = isRomanceDisabled
+          ? `(${targetChar}'s AttachLink: "[1-3 sentences of genuine inner monologue reacting directly to the recent scene]" | Mood: [Emotion] | Agenda: [Their personal secret desire or next goal] | Bond: [+0, +1, -1, etc.])`
+          : `(${targetChar}'s AttachLink: "[1-3 sentences of genuine inner monologue reacting directly to the recent scene]" | Mood: [Emotion] | Agenda: [Their personal secret desire or next goal] | Bond: [+0, +1, -1, etc.] | Romance: [+0, +1, etc.])`;
+
         taskPrompt = `\n\n[Task: STOP THE STORY & REFLECT. Step into the mind of ${targetChar} and evaluate their authentic feelings, skepticism, and agency regarding recent events with the protagonist.
 Write ${targetChar}'s authentic, unfiltered first-person inner monologue in quotes (their genuine thoughts, doubts, pride, or emotional reactions).
 
-CRITICAL CHARACTER AGENCY RULES:
-• Maintain Independent Agency: ${targetChar} has their own pride, goals, boundaries, and skepticism. They do NOT automatically become loyal, obedient, or infatuated just because the protagonist talks to them or acts politely.
-• Anti-Sycophancy (Realistic Pacing): Most casual conversations, polite banter, or everyday actions MUST result in Bond: +0 and Romance: +0 (No change).
+CRITICAL CHARACTER AGENCY & TONE RULES:
+${toneDirectives}
+• Maintain Independent Agency: ${targetChar} has their own pride, goals, and boundaries. They do NOT automatically become loyal or obedient just because the protagonist talks to them.
+• Anti-Sycophancy: Everyday actions or polite banter result in Bond: +0 (No change).
 • Bond (+1): Earned ONLY through proven sacrifice, major shared trials, deep vulnerability, or keeping critical promises.
-• Bond (-1 to -2): Decreased by manipulation, disrespect, broken promises, suspicious behavior, or hostility.
-• Romance (+1): Earned ONLY through explicit romantic chemistry, mutual flirtation, passion, or physical intimacy. Never advance romance from mere friendly talk.
-• Secret Agenda: What does ${targetChar} secretly desire or want for THEMSELVES next (e.g. self-preservation, testing the protagonist, personal ambition)?
+• Bond (-1 to -2): Decreased by manipulation, disrespect, broken promises, abandonment, or hostility.
+${romanceRule}
+• Secret Agenda: What does ${targetChar} secretly desire or want for THEMSELVES next (e.g. self-preservation, testing the protagonist, faction ambition)?
 
 Format strictly as:
-(${targetChar}'s AttachLink: "[1-3 sentences of genuine inner monologue reacting directly to the recent scene]" | Mood: [Emotion] | Agenda: [Their personal secret desire or next goal] | Bond: [+0, +1, -1, etc.] | Romance: [+0, +1, etc.])
+${formatSnippet}
 Rules:
 • Do NOT copy bracket placeholders. Write genuine thoughts for ${targetChar}.
 • Do NOT continue the story or write dialogue.]\n`;
@@ -319,6 +423,7 @@ Rules:
 
     return { text: finalText };
   } catch (err) {
+    // Fail-safe: Never crash scenario context generation
     return { text };
   }
 };
@@ -397,19 +502,20 @@ var modifier = (text) => {
       const moodText = (charData && charData.mood) ? ` | Mood: ${charData.mood}` : "";
       const bondVal = charData ? (charData.bond > 0 ? `+${charData.bond}` : charData.bond) : "";
       const bondText = bondVal !== "" ? ` | Bond: ${bondVal}` : "";
+      const isRomanceDisabled = (state.attachLink && state.attachLink.romanceMode === "disabled");
+      const romanceText = (!isRomanceDisabled && charData && typeof charData.romance !== 'undefined') ? ` | Romance: ${charData.romance}/5` : "";
       
       // Override output with pause message
-      cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "Companion"} reflected: Relationship updated${moodText}${bondText}! Press continue to resume the story. <<<\n\n`;
+      cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "Companion"} reflected: Relationship updated${moodText}${bondText}${romanceText}! Press continue to resume the story. <<<\n\n`;
     } else {
       // If previous turn was a reflection pause or system notice, guarantee continuation starts on a fresh double-spaced paragraph
       if (state.attachLink && state.attachLink.justReflected) {
         state.attachLink.justReflected = false;
         cleanedText = "\n\n" + cleanedText.trimStart();
       }
+      // Secondary leak cleaner pass on normal story output to guarantee zero immersion breaks
+      cleanedText = AttachLink.cleanContextLeaks(cleanedText);
     }
-
-    // Secondary leak cleaner pass to guarantee zero immersion breaks
-    cleanedText = AttachLink.cleanContextLeaks(cleanedText);
 
     // Sync updated Story Cards for all tracked characters
     if (state.attachLink && state.attachLink.characters) {
@@ -450,15 +556,22 @@ If you are a scenario creator, you can easily customize AttachLink at the very t
 
 ```javascript
 var AttachLinkConfig = {
-  // 1. Manually track specific NPC names (e.g. ["Marie", "Claire"])
+  // 1. Dynamic Story Tone & Romance Presets
+  // Tone: "balanced" | "gritty" | "romance" | "political" (Can be edited in Story Cards or via /tone [mode])
+  defaultTone: "balanced",
+
+  // Romance Mode: "enabled" (show hearts) | "disabled" (pure loyalty/bond, no hearts)
+  defaultRomanceMode: "enabled",
+
+  // 2. Manually track specific NPC names (e.g. ["Marie", "Claire"])
   MANUAL_CHARACTERS: [""],
 
-  // 2. Strict NPC Filtering
+  // 3. Strict NPC Filtering
   // Keep false (recommended) so only real NPCs with Character Story Cards receive companion cards.
   // This completely prevents common words like "Her", "And", "Pacific" from turning into cards!
   autoDiscoverUnlistedNPCs: false,
 
-  // 3. Automation Settings
+  // 4. Automation Settings
   autoDetectFromStoryCards: true,             // Tracks pre-existing NPCs immediately on Turn 0
   autoGenerateStoryCardsForExistingNPCs: true, // Auto-generates AttachLink companion cards
   reflectionCooldown: 15,                     // Turns between automatic pause-and-reflect cycles
@@ -471,6 +584,8 @@ var AttachLinkConfig = {
 ## 💡 Gameplay & Immersion Tips
 
 - 🖥️ **Check the System Console:** Open your `AttachLink System Console` story card anytime to see turn progress and current standing with all party members.
+- 🎭 **Tune Your Story's Feel:** Type `/tone gritty` for dangerous slow-trust survival, `/tone romance` for high-chemistry intimacy, or `/tone political` for scheming factions.
+- 🚫 **Go Pure Platonic:** Type `/romance off` anytime to hide heart meters and remove romance directives across all cards.
 - 🤝 **Build Real Trust:** Working together, keeping promises, and defending companions advances **Bond**.
 - 💖 **Physical Intimacy & Romance:** Flirting, passionate dates, and sexual intimacy naturally surge **Romance**, unlocking deeper devotion and updating their core thoughts.
 - 🧠 **Living Responses:** Companions genuinely remember their impressions—the AI reads their `Core Impression` in the background, subtly steering how they speak and act.
@@ -508,4 +623,4 @@ You have complete worldwide freedom to:
 
 ---
 
-<p align="center"><b>AttachLink v4.3</b> · Built for AI Dungeon with passion and care.</p>
+<p align="center"><b>AttachLink v4.5</b> · Built for AI Dungeon with passion and care.</p>
