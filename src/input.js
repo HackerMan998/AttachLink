@@ -1,8 +1,9 @@
-﻿// AttachLink - Input Modifier
+// AttachLink - Input Modifier
 AttachLink("input");
 
 var modifier = (text) => {
-  return { text, stop };
+  return { text };
 };
 
 modifier(text);
+

@@ -210,7 +210,7 @@ Select the **Input** tab in AI Dungeon, delete any existing code, and paste:
 AttachLink("input");
 
 var modifier = (text) => {
-  return { text, stop };
+  return { text };
 };
 
 modifier(text);
@@ -223,11 +223,12 @@ modifier(text);
 Select the **Context** tab in AI Dungeon, delete any existing code, and paste:
 
 ```javascript
+// @cache-compatible
 // AttachLink - Context Modifier
 AttachLink("context");
 
 var modifier = (text) => {
-  return { text, stop };
+  return { text };
 };
 
 modifier(text);

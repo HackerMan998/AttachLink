@@ -1,3 +1,4 @@
+// @cache-compatible
 /* ==========================================================================
    UNIVERSAL ATTACHLINK ENGINE v4.1 (COGNITIVE RELATIONSHIP PIPELINE)
    Works for ANY Scenario: Fantasy, Sci-Fi, Slice-of-Life, Romance, etc.
@@ -170,6 +171,7 @@ Object.assign(AttachLink, {
     if (typeof state.attachLink.tone === 'undefined') state.attachLink.tone = AttachLinkConfig.defaultTone || "balanced";
     if (typeof state.attachLink.romanceMode === 'undefined') state.attachLink.romanceMode = AttachLinkConfig.defaultRomanceMode || "enabled";
     if (typeof state.attachLink.cooldown === 'undefined') state.attachLink.cooldown = AttachLinkConfig.reflectionCooldown || 15;
+    if (typeof state.attachLink.openingScenario === 'undefined') state.attachLink.openingScenario = "";
 
     // Always purge any erroneously created non-character cards (locations, concepts, items)
     this.cleanupInvalidAttachLinkCards(state);
@@ -466,9 +468,6 @@ Object.assign(AttachLink, {
         if (state.memory.plotEssentials) essentials.push(state.memory.plotEssentials);
       }
     }
-    if (typeof info !== 'undefined' && info && info.memory && typeof info.memory === 'string') {
-      essentials.push(info.memory.trim());
-    }
     // Scan storyCards for any card explicitly dedicated to Plot Essentials or Memory
     if (typeof storyCards !== 'undefined' && Array.isArray(storyCards)) {
       for (var card of storyCards) {
@@ -482,11 +481,18 @@ Object.assign(AttachLink, {
     return essentials.join("\n\n").trim();
   },
 
-  // Extracts opening scenario prompt from history
-  getOpeningScenario(history) {
+  // Extracts opening scenario prompt from history, cached in state across sliding window
+  getOpeningScenario(history, state) {
+    if (state && state.attachLink && state.attachLink.openingScenario) {
+      return state.attachLink.openingScenario;
+    }
     if (Array.isArray(history) && history.length > 0) {
       var first = history[0];
-      return (first ? (first.text || first.rawText || "") : "").trim();
+      var opening = (first ? (first.text || first.rawText || "") : "").trim();
+      if (state && state.attachLink && opening) {
+        state.attachLink.openingScenario = opening;
+      }
+      return opening;
     }
     return "";
   },
@@ -520,7 +526,7 @@ Object.assign(AttachLink, {
     var baseCard = this.getBaseCharacterCard(charName);
     var cardText = baseCard ? (baseCard.entry || baseCard.value || baseCard.description || "") : "";
     var essentialsText = this.getPlotEssentials(state);
-    var openingText = this.getOpeningScenario(history);
+    var openingText = this.getOpeningScenario(history, state);
 
     var aliases = this.getAliases(charName);
 
@@ -1298,7 +1304,6 @@ Object.assign(AttachLink, {
       if (storyCards[index]) {
         storyCards[index].entry = cardContent;
         storyCards[index].description = cardNotes;
-        storyCards[index].notes = cardNotes; // Supports Phoenix and legacy property names
       }
     } else {
       if (typeof addStoryCard === 'function') {
@@ -1314,8 +1319,7 @@ Object.assign(AttachLink, {
           keys: keys,
           entry: cardContent,
           type: type,
-          description: cardNotes,
-          notes: cardNotes
+          description: cardNotes
         });
       }
     }
@@ -1397,7 +1401,6 @@ Object.assign(AttachLink, {
       if (storyCards[index]) {
         storyCards[index].entry = cardContent;
         storyCards[index].description = cardNotes;
-        storyCards[index].notes = cardNotes;
       }
     } else {
       if (typeof addStoryCard === 'function') {
@@ -1412,8 +1415,7 @@ Object.assign(AttachLink, {
           keys: keys,
           entry: cardContent,
           type: type,
-          description: cardNotes,
-          notes: cardNotes
+          description: cardNotes
         });
       }
     }
@@ -1489,19 +1491,24 @@ AttachLink.handleInput = function(inputText) {
 
     var trimmed = text.trim();
 
+    var respondCommand = function(msg) {
+      state.attachLink.commandMessage = msg;
+      state.message = msg;
+      AttachLink.syncSystemConsoleCard(state);
+      return { text: text };
+    };
+
     // Command: /tone [mode] (e.g. /tone gritty, /tone romance, /tone balanced, /tone political, /tone comedy, /tone horror)
     var toneMatch = trimmed.match(/^\/?tone(?:\s+(.+))?$/i);
     if (toneMatch) {
       var chosenTone = toneMatch[1] ? toneMatch[1].trim().toLowerCase() : "";
       if (["balanced", "gritty", "romance", "political", "comedy", "horror"].includes(chosenTone)) {
         state.attachLink.tone = chosenTone;
-        AttachLink.syncSystemConsoleCard(state);
-        state.message = `[AttachLink] Story Tone set to: ${chosenTone.toUpperCase()}.\n• Reflection directives and relationship dynamics updated.`;
+        return respondCommand(`[AttachLink] Story Tone set to: ${chosenTone.toUpperCase()}.\n• Reflection directives and relationship dynamics updated.`);
       } else {
         var curTone = (state.attachLink && state.attachLink.tone) || "balanced";
-        state.message = `[AttachLink Tone] Current: ${curTone.toUpperCase()}\nUsage: /tone [balanced | gritty | romance | political | comedy | horror]\n• balanced: Natural human behavior, fair boundaries, steady pacing.\n• gritty: Cynical, slow trust, betrayal tracking, harsh consequences.\n• romance: Emotional intimacy, passion, vulnerability, chemistry.\n• political: Transactional loyalties, faction leverage, intrigue.\n• comedy: Playful banter, witty sarcasm, comedic friction.\n• horror: Psychological dread, paranoia, fear responses, fragile trust.`;
+        return respondCommand(`[AttachLink Tone] Current: ${curTone.toUpperCase()}\nUsage: /tone [balanced | gritty | romance | political | comedy | horror]\n• balanced: Natural human behavior, fair boundaries, steady pacing.\n• gritty: Cynical, slow trust, betrayal tracking, harsh consequences.\n• romance: Emotional intimacy, passion, vulnerability, chemistry.\n• political: Transactional loyalties, faction leverage, intrigue.\n• comedy: Playful banter, witty sarcasm, comedic friction.\n• horror: Psychological dread, paranoia, fear responses, fragile trust.`);
       }
-      return { text: "", stop: true };
     }
 
     // Command: /romance [on|off] (e.g. /romance off, /romance on)
@@ -1511,18 +1518,15 @@ AttachLink.handleInput = function(inputText) {
       if (["off", "disable", "disabled", "hide", "hidden"].includes(arg)) {
         state.attachLink.romanceMode = "disabled";
         AttachLink.syncAllStoryCards(state);
-        AttachLink.syncSystemConsoleCard(state);
-        state.message = `[AttachLink] Romance Track DISABLED.\n• Heart gauges and romance directives hidden globally across all cards.`;
+        return respondCommand(`[AttachLink] Romance Track DISABLED.\n• Heart gauges and romance directives hidden globally across all cards.`);
       } else if (["on", "enable", "enabled", "show"].includes(arg)) {
         state.attachLink.romanceMode = "enabled";
         AttachLink.syncAllStoryCards(state);
-        AttachLink.syncSystemConsoleCard(state);
-        state.message = `[AttachLink] Romance Track ENABLED.\n• Heart gauges and romantic chemistry active.`;
+        return respondCommand(`[AttachLink] Romance Track ENABLED.\n• Heart gauges and romantic chemistry active.`);
       } else {
         var curRomance = (state.attachLink && state.attachLink.romanceMode) || "enabled";
-        state.message = `[AttachLink Romance] Currently: ${curRomance.toUpperCase()}\nUsage: /romance [on | off]\n• on: Shows heart gauges and tracks romantic chemistry.\n• off: Completely removes romance from all story cards and reflection directives.`;
+        return respondCommand(`[AttachLink Romance] Currently: ${curRomance.toUpperCase()}\nUsage: /romance [on | off]\n• on: Shows heart gauges and tracks romantic chemistry.\n• off: Completely removes romance from all story cards and reflection directives.`);
       }
-      return { text: "", stop: true };
     }
 
     // Command: /track [Name] (e.g. /track Vera or track Vera)
@@ -1535,12 +1539,10 @@ AttachLink.handleInput = function(inputText) {
         var actualName = charData ? charData.name : targetName;
         state.attachLink.activeChar = actualName;
         AttachLink.syncStoryCard(state, actualName);
-        AttachLink.syncSystemConsoleCard(state);
-        state.message = `[AttachLink] Now tracking ${actualName}! A companion AttachLink card has been created.`;
+        return respondCommand(`[AttachLink] Now tracking ${actualName}! A companion AttachLink card has been created.`);
       } else {
-        state.message = `[AttachLink] Please specify a character to track, e.g. /track Vera`;
+        return respondCommand(`[AttachLink] Please specify a character to track, e.g. /track Vera`);
       }
-      return { text: "", stop: true };
     }
 
     // Command: /untrack [Name] or /forget [Name]
@@ -1549,11 +1551,10 @@ AttachLink.handleInput = function(inputText) {
       var targetName = untrackMatch[1] ? untrackMatch[1].trim() : (state.attachLink.activeChar || "");
       if (targetName) {
         var removed = AttachLink.untrackCharacter(targetName, state);
-        state.message = `[AttachLink] Stopped tracking "${removed || targetName}". Companion card removed.`;
+        return respondCommand(`[AttachLink] Stopped tracking "${removed || targetName}". Companion card removed.`);
       } else {
-        state.message = `[AttachLink] Specify a character to untrack, e.g. /untrack Vera`;
+        return respondCommand(`[AttachLink] Specify a character to untrack, e.g. /untrack Vera`);
       }
-      return { text: "", stop: true };
     }
 
     // Command: /setbond [Name] [val] or /bond [Name] [val] (e.g. /setbond Mia +1 or /setbond Mia 4)
@@ -1568,12 +1569,10 @@ AttachLink.handleInput = function(inputText) {
         var num = parseInt(rawVal.replace("=", ""), 10);
         AttachLink.applyDeltas(state, actualName, { bond: num, isAbsoluteBond: isAbsolute });
         AttachLink.syncStoryCard(state, actualName);
-        AttachLink.syncSystemConsoleCard(state);
-        state.message = `[AttachLink] ${actualName}'s Bond updated to: ${charData.bond > 0 ? '+' + charData.bond : charData.bond} (${AttachLinkConfig.bondLevels[charData.bond.toString()] || 'Neutral'})`;
+        return respondCommand(`[AttachLink] ${actualName}'s Bond updated to: ${charData.bond > 0 ? '+' + charData.bond : charData.bond} (${AttachLinkConfig.bondLevels[charData.bond.toString()] || 'Neutral'})`);
       } else {
-        state.message = `[AttachLink] Usage: /setbond [Name] [val] (e.g. /setbond Mia +1 or /setbond Mia 4)`;
+        return respondCommand(`[AttachLink] Usage: /setbond [Name] [val] (e.g. /setbond Mia +1 or /setbond Mia 4)`);
       }
-      return { text: "", stop: true };
     }
 
     // Command: /setromance [Name] [val] (e.g. /setromance Mia 3)
@@ -1588,12 +1587,10 @@ AttachLink.handleInput = function(inputText) {
         var num = parseInt(rawVal.replace("=", ""), 10);
         AttachLink.applyDeltas(state, actualName, { romance: num, isAbsoluteRomance: isAbsolute });
         AttachLink.syncStoryCard(state, actualName);
-        AttachLink.syncSystemConsoleCard(state);
-        state.message = `[AttachLink] ${actualName}'s Romance updated to: ${charData.romance}/5 (${AttachLinkConfig.romanceLevels[charData.romance.toString()] || 'Platonic'})`;
+        return respondCommand(`[AttachLink] ${actualName}'s Romance updated to: ${charData.romance}/5 (${AttachLinkConfig.romanceLevels[charData.romance.toString()] || 'Platonic'})`);
       } else {
-        state.message = `[AttachLink] Usage: /setromance [Name] [val] (e.g. /setromance Mia 3 or /setromance Mia +1)`;
+        return respondCommand(`[AttachLink] Usage: /setromance [Name] [val] (e.g. /setromance Mia 3 or /setromance Mia +1)`);
       }
-      return { text: "", stop: true };
     }
 
     // Command: /setmood [Name] [Mood] (e.g. /setmood Mia Anxious)
@@ -1607,12 +1604,10 @@ AttachLink.handleInput = function(inputText) {
         var actualName = charData ? charData.name : targetName;
         AttachLink.applyDeltas(state, actualName, { mood: newMood });
         AttachLink.syncStoryCard(state, actualName);
-        AttachLink.syncSystemConsoleCard(state);
-        state.message = `[AttachLink] ${actualName}'s Mood updated to: ${charData.mood}`;
+        return respondCommand(`[AttachLink] ${actualName}'s Mood updated to: ${charData.mood}`);
       } else {
-        state.message = `[AttachLink] Usage: /setmood [Name] [Mood] (e.g. /setmood Mia Devoted)`;
+        return respondCommand(`[AttachLink] Usage: /setmood [Name] [Mood] (e.g. /setmood Mia Devoted)`);
       }
-      return { text: "", stop: true };
     }
 
     // Command: /cooldown [turns] (e.g. /cooldown 10)
@@ -1621,13 +1616,11 @@ AttachLink.handleInput = function(inputText) {
       if (cdMatch[1]) {
         var turns = Math.max(3, Math.min(50, parseInt(cdMatch[1], 10)));
         state.attachLink.cooldown = turns;
-        AttachLink.syncSystemConsoleCard(state);
-        state.message = `[AttachLink] Reflection cooldown set to every ${turns} turns.`;
+        return respondCommand(`[AttachLink] Reflection cooldown set to every ${turns} turns.`);
       } else {
         var curCd = (state.attachLink && state.attachLink.cooldown) || AttachLinkConfig.reflectionCooldown || 15;
-        state.message = `[AttachLink] Current reflection cooldown: every ${curCd} turns.\nUsage: /cooldown [number] (e.g. /cooldown 10)`;
+        return respondCommand(`[AttachLink] Current reflection cooldown: every ${curCd} turns.\nUsage: /cooldown [number] (e.g. /cooldown 10)`);
       }
-      return { text: "", stop: true };
     }
 
     // Command: /list or /party
@@ -1644,8 +1637,7 @@ AttachLink.handleInput = function(inputText) {
         }
       }
       var partySummary = charLines.length > 0 ? charLines.join("\n") : "  • No characters tracked yet. Create a Character Card or use /track [Name].";
-      state.message = `[AttachLink Tracked Party]\n${partySummary}`;
-      return { text: "", stop: true };
+      return respondCommand(`[AttachLink Tracked Party]\n${partySummary}`);
     }
 
     // Command: /status or status
@@ -1656,9 +1648,7 @@ AttachLink.handleInput = function(inputText) {
       var active = (state.attachLink && state.attachLink.activeChar) || "None";
       var tone = (state.attachLink && state.attachLink.tone) || "balanced";
       var romance = (state.attachLink && state.attachLink.romanceMode) || "enabled";
-      state.message = `[AttachLink Status] Active NPC: "${active}" | Turn ${turns}/${maxTurns} (${remaining} until auto-pause) | Tone: ${tone.toUpperCase()} | Romance: ${romance.toUpperCase()}`;
-      AttachLink.syncSystemConsoleCard(state);
-      return { text: "", stop: true };
+      return respondCommand(`[AttachLink Status] Active NPC: "${active}" | Turn ${turns}/${maxTurns} (${remaining} until auto-pause) | Tone: ${tone.toUpperCase()} | Romance: ${romance.toUpperCase()}`);
     }
 
     // Command: /reflect [Optional Name] (e.g. /reflect, reflect, or /reflect Vera)
@@ -1681,9 +1671,7 @@ AttachLink.handleInput = function(inputText) {
         // Return non-empty action so AI Dungeon executes reflection immediately without error!
         return { text: `[${actualName} reflects on recent events]` };
       } else {
-        state.message = `[AttachLink] No active character detected in scene. Type '/reflect [Name]' (e.g. /reflect Vera) or create a Character Story Card.`;
-        AttachLink.syncSystemConsoleCard(state);
-        return { text: "", stop: true };
+        return respondCommand(`[AttachLink] No active character detected in scene. Type '/reflect [Name]' (e.g. /reflect Vera) or create a Character Story Card.`);
       }
     }
 
@@ -1705,15 +1693,13 @@ AttachLink.handleInput = function(inputText) {
         AttachLink.syncSystemConsoleCard(state);
         return { text: `[${actualName} consolidates memory foundation]` };
       } else {
-        state.message = `[AttachLink] No active character detected. Type '/consolidate [Name]' (e.g. /consolidate Vera).`;
-        AttachLink.syncSystemConsoleCard(state);
-        return { text: "", stop: true };
+        return respondCommand(`[AttachLink] No active character detected. Type '/consolidate [Name]' (e.g. /consolidate Vera).`);
       }
     }
 
     // Command: /attachlink or /al or /help
     if (trimmed.match(/^\/?(?:attachlink|al)(?:\s+help)?$/i)) {
-      state.message = `[AttachLink Engine Commands]\n` +
+      return respondCommand(`[AttachLink Engine Commands]\n` +
         `• /tone [mode]      : Set tone (balanced, gritty, romance, political, comedy, horror)\n` +
         `• /romance [on|off] : Enable or disable romance gauges globally\n` +
         `• /reflect [Name]   : Trigger immediate relationship reflection\n` +
@@ -1725,8 +1711,7 @@ AttachLink.handleInput = function(inputText) {
         `• /setmood [N] [m]  : Set companion mood (e.g. /setmood Mia Anxious)\n` +
         `• /cooldown [turns] : Set reflection interval (e.g. /cooldown 10)\n` +
         `• /list             : View compact summary of all tracked NPCs\n` +
-        `• /status           : View current settings and countdown`;
-      return { text: "", stop: true };
+        `• /status           : View current settings and countdown`);
     }
 
     // Normal turn: increment turn counter
@@ -1750,6 +1735,11 @@ AttachLink.handleContext = function(contextText) {
 
     AttachLink.init(state);
     AttachLink.readSettingsFromConsoleCard(state);
+
+    // If a system command was executed this turn, build context normally without interference
+    if (state.attachLink && state.attachLink.commandMessage) {
+      return { text: "" };
+    }
 
     // 2. Identify active character or manual reflection target
     const activeChar = AttachLink.resolveActiveCharacter(state, typeof history !== 'undefined' ? history : []);

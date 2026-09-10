@@ -1,8 +1,10 @@
-﻿// AttachLink - Context Modifier
+// @cache-compatible
+// AttachLink - Context Modifier
 AttachLink("context");
 
 var modifier = (text) => {
-  return { text, stop };
+  return { text };
 };
 
 modifier(text);
+
