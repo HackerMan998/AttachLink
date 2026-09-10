@@ -24,6 +24,7 @@ var AttachLinkConfig = {
   autoDetectFromStoryCards: true, // Existing character cards are tracked immediately
   autoGenerateStoryCardsForExistingNPCs: true, // Immediately generate companion AttachLink cards for all detected NPCs
   reflectionCooldown: 15,        // Turns before an automatic relationship reflection pause
+  maxMemoryBuffer: 5,            // Max memories remembered before autonomous consolidation into 1 foundation
   lookbackTurnsForPresence: 5,   // Actions back to check who is active in the scene
 
   // 4. 🎮 RELATIONSHIP PIPELINE CONFIGURATION
@@ -505,17 +506,6 @@ Object.assign(AttachLink, {
 
   // Scans opening scenario, plot essentials, and character cards to infer established lore relationship
   inferInitialRelationship(charName, state, history) {
-    var baseCard = this.getBaseCharacterCard(charName);
-    var cardText = baseCard ? (baseCard.entry || baseCard.value || baseCard.description || "") : "";
-    var essentialsText = this.getPlotEssentials(state);
-    var openingText = this.getOpeningScenario(history);
-
-    var corpus = `${cardText}\n${essentialsText}\n${openingText}`.toLowerCase();
-    var aliases = this.getAliases(charName).map(a => a.toLowerCase());
-    
-    // Check if the corpus mentions the character in connection with key relational markers
-    var hasCharMention = aliases.some(a => corpus.includes(a)) || (cardText.trim().length > 0);
-
     var result = {
       bond: 0,
       romance: 0,
@@ -525,16 +515,45 @@ Object.assign(AttachLink, {
       inferred: false
     };
 
-    if (!hasCharMention && !cardText) {
+    if (!charName) return result;
+
+    var baseCard = this.getBaseCharacterCard(charName);
+    var cardText = baseCard ? (baseCard.entry || baseCard.value || baseCard.description || "") : "";
+    var essentialsText = this.getPlotEssentials(state);
+    var openingText = this.getOpeningScenario(history);
+
+    var aliases = this.getAliases(charName);
+
+    // Extract only sentences that explicitly mention charName or their aliases
+    var extractRelevantSentences = function(text, aliasList) {
+      if (!text || typeof text !== 'string') return "";
+      var sentences = text.split(/(?<=[.!?\n])\s+/);
+      var matched = sentences.filter(s => {
+        var lowerS = s.toLowerCase();
+        return aliasList.some(a => {
+          if (!a || a.length < 2) return false;
+          var esc = escapeRegex(a.toLowerCase());
+          return new RegExp(`\\b${esc}\\b`, 'i').test(lowerS);
+        });
+      });
+      return matched.join(" ");
+    };
+
+    var relevantEssentials = extractRelevantSentences(essentialsText, aliases);
+    var relevantOpening = extractRelevantSentences(openingText, aliases);
+
+    // Target corpus is strictly the character's own card plus external sentences explicitly about them
+    var targetCorpus = [cardText, relevantEssentials, relevantOpening].filter(Boolean).join("\n");
+    if (!targetCorpus.trim()) {
       return result;
     }
 
     var matchesPattern = function(regex) {
-      return (cardText && regex.test(cardText)) || (essentialsText && regex.test(essentialsText)) || (openingText && regex.test(openingText));
+      return regex.test(targetCorpus);
     };
 
-    // 0. Abandonment / Past Betrayal / Bitter Grudge (High Consequence)
-    if (matchesPattern(/\b(abandoned|left behind|betrayed|deserted|forsaken|left to die|swore revenge|bitter grudge|resents you|blames you|seeks vengeance)\b/i)) {
+    // 0. Abandonment / Past Betrayal / Bitter Grudge (High Consequence - Directed at Player)
+    if (matchesPattern(/\b(abandoned by you|left behind by you|betrayed by you|you abandoned|you betrayed|deserted by you|left to die by you|swore revenge (?:on|against) you|bitter grudge against you|resents you|blames you|seeks vengeance against you)\b/i)) {
       result.bond = -4;
       result.romance = 0;
       result.mood = "Resentful";
@@ -544,8 +563,8 @@ Object.assign(AttachLink, {
       return result;
     }
 
-    // 1. Spousal / Married / Engaged
-    if (matchesPattern(/\b(wife|husband|spouse|fianc[eé]e?|bride|groom|married to you|your wife|your husband)\b/i)) {
+    // 1. Spousal / Married / Engaged (Must be with player)
+    if (matchesPattern(/\b(your\s+(?:wife|husband|spouse|fianc[eé]e?|bride|groom)|married to you|wed to you|betrothed to you|you are (?:her|his|their) (?:husband|wife|spouse))\b/i)) {
       result.bond = 4;
       result.romance = 4;
       result.mood = "Loving";
@@ -554,8 +573,8 @@ Object.assign(AttachLink, {
       return result;
     }
 
-    // 2. Dating / Lovers / Romantic Partners
-    if (matchesPattern(/\b(girlfriend|boyfriend|lover|dating you|dating each other|in love with you|your girlfriend|your boyfriend|romantic partner|sweetheart)\b/i)) {
+    // 2. Dating / Lovers / Romantic Partners (Must be with player)
+    if (matchesPattern(/\b(your\s+(?:girlfriend|boyfriend|lover|romantic partner|sweetheart)|dating you|in love with you|you are (?:her|his|their) (?:girlfriend|boyfriend|lover))\b/i)) {
       result.bond = 3;
       result.romance = 3;
       result.mood = "Affectionate";
@@ -565,7 +584,7 @@ Object.assign(AttachLink, {
     }
 
     // 3. Crush / Mutual Flirtation / Attraction
-    if (matchesPattern(/\b(crush on you|attracted to you|flirting with you|desires you|infatuated with you)\b/i)) {
+    if (matchesPattern(/\b(crush on you|attracted to you|flirting with you|desires you|infatuated with you|feelings for you)\b/i)) {
       result.bond = 2;
       result.romance = 2;
       result.mood = "Flustered";
@@ -575,7 +594,7 @@ Object.assign(AttachLink, {
     }
 
     // 4. Best Friend / Inseparable / Lifelong Ally
-    if (matchesPattern(/\b(best friend|childhood friend|closest friend|inseparable friend|lifelong friend)\b/i)) {
+    if (matchesPattern(/\b(your\s+(?:best friend|childhood friend|closest friend|inseparable friend|lifelong friend)|best friend of yours|childhood friend of yours)\b/i)) {
       result.bond = 4;
       result.romance = 0;
       result.mood = "Friendly";
@@ -584,8 +603,8 @@ Object.assign(AttachLink, {
       return result;
     }
 
-    // 5. Family / Relatives
-    if (matchesPattern(/\b(sister|brother|mother|father|daughter|son|your sibling|family)\b/i)) {
+    // 5. Family / Relatives (Strictly player-relative)
+    if (matchesPattern(/\b(your\s+(?:older\s+|younger\s+|little\s+|big\s+|twin\s+|adoptive\s+|step\s+|half\s+)?(?:sister|brother|mother|father|daughter|son|sibling|cousin|aunt|uncle|niece|nephew|parent|family\s+member)|(?:part\s+of|in)\s+your\s+family|family\s+member\s+of\s+yours|(?:sister|brother|mother|father|daughter|son|sibling)\s+to\s+you|you\s+are\s+(?:her|his|their)\s+(?:brother|sister|sibling|father|mother|parent|son|daughter))\b/i)) {
       result.bond = 3;
       result.romance = 0;
       result.mood = "Warm";
@@ -595,7 +614,7 @@ Object.assign(AttachLink, {
     }
 
     // 6. Devoted / Servant / Submissive
-    if (matchesPattern(/\b(devoted to you|obedient to you|your servant|your maid|your slave|servant of yours)\b/i)) {
+    if (matchesPattern(/\b(devoted to you|obedient to you|your servant|your maid|your slave|servant of yours|slave to you)\b/i)) {
       result.bond = 3;
       result.romance = 1;
       result.mood = "Devoted";
@@ -605,7 +624,7 @@ Object.assign(AttachLink, {
     }
 
     // 7. Good Friend / Companion / Ally
-    if (matchesPattern(/\b(close friend|good friend|companion|trusted ally|comrade|trusted partner)\b/i)) {
+    if (matchesPattern(/\b(your\s+(?:close friend|good friend|companion|trusted ally|comrade|trusted partner)|companion of yours|trusted ally of yours|good friend of yours|close friend of yours)\b/i)) {
       result.bond = 2;
       result.romance = 0;
       result.mood = "Cordial";
@@ -615,7 +634,7 @@ Object.assign(AttachLink, {
     }
 
     // 8. Co-worker / Business Partner / Colleague
-    if (matchesPattern(/\b(co-worker|coworker|business partner|co-manager|colleague|employee|co-owner)\b/i)) {
+    if (matchesPattern(/\b(your\s+(?:co-worker|coworker|business partner|co-manager|colleague|employee|co-owner)|works for you|employed by you)\b/i)) {
       result.bond = 1;
       result.romance = 0;
       result.mood = "Professional";
@@ -625,7 +644,7 @@ Object.assign(AttachLink, {
     }
 
     // 9. Nemesis / Sworn Enemy
-    if (matchesPattern(/\b(nemesis|arch-enemy|deadly foe|sworn enemy|mortal enemy|lethal enemy)\b/i)) {
+    if (matchesPattern(/\b(your\s+(?:nemesis|arch-enemy|deadly foe|sworn enemy|mortal enemy|lethal enemy)|sworn enemy of yours|nemesis of yours)\b/i)) {
       result.bond = -4;
       result.romance = 0;
       result.mood = "Hostile";
@@ -635,7 +654,7 @@ Object.assign(AttachLink, {
     }
 
     // 10. Enemy / Hostile
-    if (matchesPattern(/\b(enemy|hates you|despises you|hostile towards you|opponent|antagonist)\b/i)) {
+    if (matchesPattern(/\b(enemy of yours|your enemy|hates you|despises you|hostile towards you|opponent of yours|your antagonist)\b/i)) {
       result.bond = -3;
       result.romance = 0;
       result.mood = "Cold";
@@ -645,7 +664,7 @@ Object.assign(AttachLink, {
     }
 
     // 11. Rival / Competitor
-    if (matchesPattern(/\b(rival|competitor|distrusts you|suspicious of you|wary of you)\b/i)) {
+    if (matchesPattern(/\b(your\s+(?:rival|competitor)|rival of yours|competitor of yours|distrusts you|suspicious of you|wary of you)\b/i)) {
       result.bond = -1;
       result.romance = 0;
       result.mood = "Guarded";
@@ -718,6 +737,37 @@ Object.assign(AttachLink, {
       }
       if (existingData.agenda && /personal secret goal|secret personal goal/i.test(existingData.agenda)) {
         existingData.agenda = "";
+      }
+      // Self-heal: Fix false-positive family lore
+      if (existingData.coreMemory === "Established in scenario lore as part of your family.") {
+        var historyRef = (typeof history !== 'undefined') ? history : [];
+        var verified = this.inferInitialRelationship(cleanName, state, historyRef);
+        if (!verified || !verified.inferred || verified.coreMemory !== "Established in scenario lore as part of your family.") {
+          existingData.coreMemory = "";
+          if (existingData.bond === 3 && existingData.mood === "Warm") {
+            existingData.bond = 0;
+            existingData.mood = "Neutral";
+          }
+          if (Array.isArray(existingData.thoughts)) {
+            existingData.thoughts = existingData.thoughts.filter(t => t !== "Established in scenario lore as part of your family.");
+          }
+        }
+      }
+      // Self-heal: Purge hardcoded canned fallback thoughts
+      var cannedDefaults = [
+        "Reflecting on recent events and keeping my own priorities in mind as things progress.",
+        "Being so completely intimate together was intense... experiencing that vulnerability brings us closer.",
+        "Deepen our intimacy and explore what this connection means.",
+        "Protect and stand by our bond through whatever comes next."
+      ];
+      if (existingData.coreMemory && cannedDefaults.includes(existingData.coreMemory)) {
+        existingData.coreMemory = "";
+      }
+      if (existingData.agenda && (existingData.agenda === "Deepen our intimacy and explore what this connection means." || existingData.agenda === "Protect and stand by our bond through whatever comes next.")) {
+        existingData.agenda = "";
+      }
+      if (Array.isArray(existingData.thoughts)) {
+        existingData.thoughts = existingData.thoughts.filter(t => !cannedDefaults.includes(t));
       }
       return existingData;
     }
@@ -865,41 +915,99 @@ Object.assign(AttachLink, {
 
     var isDummyThought = function(t) {
       if (!t) return true;
-      return /deep thoughts|thoughts about the protagonist|inner monologue about|insert thought|write thought/i.test(t);
+      return /deep thoughts|thoughts about the protagonist|inner monologue about|insert thought|write thought|1-3 sentences of genuine/i.test(t);
     };
 
     var isDummyAgenda = function(a) {
       if (!a) return true;
-      return /personal secret goal|secret personal goal|secret goal|insert agenda|what npc wants/i.test(a);
+      return /personal secret goal|secret personal goal|secret goal|insert agenda|what npc wants|their personal secret desire/i.test(a);
     };
 
-    // 1. Extract thought / inner monologue
-    // Priority A: Quoted string of substantial length
-    var quoteMatch = text.match(/["“]([^"”]{10,})["”]/);
-    if (quoteMatch && !isDummyThought(quoteMatch[1])) {
-      result.thought = quoteMatch[1].trim();
-    } else {
-      // Priority B: Text after AttachLink: before any attribute keywords or pipes/newlines
-      var fallbackMatch = text.match(/AttachLink\s*[:=\-]\s*([^|•\n\r]+)/i);
-      if (fallbackMatch) {
-        var cleanFallback = fallbackMatch[1].trim().replace(/^[\(\[\*"'“]+|[\)\]\*"”]+$/g, '');
-        if (!isDummyThought(cleanFallback)) {
-          result.thought = cleanFallback;
+    var cleanText = text.trim();
+
+    // 1. Extract thought / inner monologue via multi-strategy cascading parser
+
+    // Strategy A: Primed continuation
+    // When prompt ended with: (${targetChar}'s AttachLink: "
+    // Output starts directly with the thought: I was so scared..." | Mood: Relieved ...
+    var primedMatch = cleanText.match(/^["“]?([^"”\n\r|]{6,})["”]?\s*(?:\|\s*(?:Mood|Emotion|Agenda|Bond|Romance)|$)/i);
+    if (primedMatch && !isDummyThought(primedMatch[1]) && !/\b(said|asked|whimpered|replied|screamed|gasped)\b/i.test(primedMatch[1])) {
+      result.thought = primedMatch[1].trim();
+    }
+
+    // Strategy B: Explicit template header with AttachLink / AttachLink Consolidation:
+    // Example: (Aria's AttachLink: "I feel so grateful." | Mood: Calm)
+    if (!result.thought) {
+      var templateMatch = cleanText.match(/(?:'s\s*)?AttachLink(?:\s*Consolidation)?\s*[:=\-]\s*["“]([^"”]{6,})["”]/i) ||
+                          cleanText.match(/(?:'s\s*)?AttachLink(?:\s*Consolidation)?\s*[:=\-]\s*([^|•\n\r]{6,})(?:\s*\||\s*\n|$)/i);
+      if (templateMatch) {
+        var cand = templateMatch[1].trim().replace(/^["“'*\s]+|["”'*\s]+$/g, '');
+        if (!isDummyThought(cand)) {
+          result.thought = cand;
+        }
+      }
+    }
+
+    // Strategy C: Explicit labeled fields (Thought:, Monologue:, Reflection:, Impression:)
+    // Supports single-line, multi-line, and markdown bullets (* Thought: ...)
+    if (!result.thought) {
+      var explicitMatch = cleanText.match(/(?:Thought|Monologue|Inner\s*Monologue|Impression|Reflection)\s*[:=\-]\s*["“]?([^"”\n\r|•]{6,})["”]?/i);
+      if (explicitMatch) {
+        var cand = explicitMatch[1].trim().replace(/^["“'*\s]+|["”'*\s]+$/g, '');
+        if (!isDummyThought(cand)) {
+          result.thought = cand;
+        }
+      }
+    }
+
+    // Strategy D: Standalone quotes that are NOT spoken dialogue
+    if (!result.thought) {
+      var quotes = cleanText.match(/["“]([^"”]{10,})["”]/g);
+      if (quotes) {
+        for (var q of quotes) {
+          var unquoted = q.replace(/^["“]+|["”]+$/g, '').trim();
+          var qIdx = cleanText.indexOf(q);
+          var surrounding = cleanText.slice(Math.max(0, qIdx - 40), Math.min(cleanText.length, qIdx + q.length + 40));
+          var isDialogue = /\b(said|asked|whispered|whimpered|replied|shouted|cried|sighed|muttered|gasped|exclaimed)\b/i.test(surrounding);
+          if (!isDialogue && !isDummyThought(unquoted)) {
+            result.thought = unquoted;
+            break;
+          }
+        }
+      }
+    }
+
+    // Strategy E: Natural AI Prose Fallback
+    // If the model generated descriptive story prose instead of the template, extract the first 1-2 sentences of the AI's actual writing!
+    // Never discard the AI's real words to force a canned default string!
+    if (!result.thought) {
+      var stripped = cleanText.replace(/\[[\s\S]*?\]/g, '').replace(/\([^)]*AttachLink[^)]*\)/gi, '').trim();
+      var sentences = stripped.match(/[^.!?\n]+[.!?]?/g);
+      if (sentences && sentences.length > 0) {
+        var candidateSentences = sentences.filter(s => {
+          var trimmedS = s.trim();
+          return trimmedS.length >= 10 && !isDummyThought(trimmedS) && !/^(?:Bond|Romance|Mood|Agenda)\s*:/i.test(trimmedS);
+        });
+        if (candidateSentences.length > 0) {
+          var firstSentence = candidateSentences[0].trim().replace(/^["“'*\s]+|["”'*\s]+$/g, '');
+          if (firstSentence.length >= 10 && !isDummyThought(firstSentence)) {
+            result.thought = firstSentence;
+          }
         }
       }
     }
 
     // 2. Extract Mood (supports: Mood: Devoted, Mood: [Devoted], • Mood: Devoted, etc.)
-    var moodMatch = text.match(/(?:Mood|Emotion|Demeanor)\s*[:=\-]?\s*[\[\("“']?([a-zA-Z\s\/\-]+?)[\]\)"”']?(?:\s*(?:\||\n|\r|$))/i);
+    var moodMatch = cleanText.match(/(?:Mood|Emotion|Demeanor)\s*[:=\-]?\s*[\[\("“']?([a-zA-Z\s\/\-]+?)[\]\)"”']?(?:\s*(?:\||\n|\r|$))/i);
     if (moodMatch) {
       var rawMood = moodMatch[1].trim();
-      if (rawMood.length >= 2 && rawMood.length <= 35 && !/current emotion|emotion/i.test(rawMood)) {
+      if (rawMood.length >= 2 && rawMood.length <= 35 && !/current emotion|emotion|placeholder/i.test(rawMood)) {
         result.mood = rawMood.charAt(0).toUpperCase() + rawMood.slice(1).toLowerCase();
       }
     }
 
     // 3. Extract Agenda (supports: Agenda: Master lessons, Agenda: [Goal], etc.)
-    var agendaMatch = text.match(/(?:Agenda|Goal|Desire)\s*[:=\-]?\s*[\[\("“']?([^\]\)"”\n\r|]+?)[\]\)"”']?(?:\s*(?:\||\n|\r|$))/i);
+    var agendaMatch = cleanText.match(/(?:Agenda|Goal|Desire|Secret\s*Goal)\s*[:=\-]?\s*[\[\("“']?([^\]\)"”\n\r|]+?)[\]\)"”']?(?:\s*(?:\||\n|\r|$))/i);
     if (agendaMatch) {
       var rawAgenda = agendaMatch[1].trim();
       if (rawAgenda.length >= 3 && rawAgenda.length <= 150 && !isDummyAgenda(rawAgenda)) {
@@ -908,7 +1016,7 @@ Object.assign(AttachLink, {
     }
 
     // 4. Extract Bond (supports: Bond: +1, Bond: [+1], Bond: =3, • Bond: +2, Bond: 1, Bond: 0, etc.)
-    var bondMatch = text.match(/(?:Bond(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*([=+\-]?\s*\d+)/i);
+    var bondMatch = cleanText.match(/(?:Bond(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*([=+\-]?\s*\d+)/i);
     if (bondMatch) {
       var rawBond = bondMatch[1].replace(/\s+/g, '');
       if (rawBond.startsWith("=")) {
@@ -924,12 +1032,12 @@ Object.assign(AttachLink, {
     }
 
     // 5. Extract Romance (supports: Romance: +1, Romance: [+1], Romance: 1/5, Romance: 3, etc.)
-    var romanceFractionMatch = text.match(/(?:Romance(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*(\d+)\s*\/\s*5/i);
+    var romanceFractionMatch = cleanText.match(/(?:Romance(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*(\d+)\s*\/\s*5/i);
     if (romanceFractionMatch) {
       result.romance = parseInt(romanceFractionMatch[1], 10);
       result.isAbsoluteRomance = true;
     } else {
-      var romanceMatch = text.match(/(?:Romance(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*([=+\-]?\s*\d+)/i);
+      var romanceMatch = cleanText.match(/(?:Romance(?:\s*Level)?)\s*[:=\-]?\s*[\[\(]?\s*([=+\-]?\s*\d+)/i);
       if (romanceMatch) {
         var rawRomance = romanceMatch[1].replace(/\s+/g, '');
         if (rawRomance.startsWith("=")) {
@@ -950,7 +1058,7 @@ Object.assign(AttachLink, {
     if (Array.isArray(history) && history.length > 0) {
       recentCorpus = history.slice(-6).map(h => (h ? (h.text || h.rawText || "") : "")).join(" ");
     }
-    var fullScene = (recentCorpus + " " + text).toLowerCase();
+    var fullScene = (recentCorpus + " " + cleanText).toLowerCase();
 
     // Differentiate intimate scenes from combat / physical battle scenes
     var isCombatScene = /\b(sword|blade|dagger|spear|arrow|wound|blood|combat|battle|stab\w*|shield|monster|goblin|orc|enemy)\b/i.test(fullScene);
@@ -959,15 +1067,6 @@ Object.assign(AttachLink, {
     // Check if romance is disabled in state or config
     var isRomanceDisabled = (typeof state !== 'undefined' && state.attachLink && state.attachLink.romanceMode === "disabled") ||
       (typeof AttachLinkConfig !== 'undefined' && AttachLinkConfig.defaultRomanceMode === "disabled");
-
-    // If the model echoed dummy text or omitted a real monologue, generate an authentic thought based on the scene:
-    if (!result.thought) {
-      if (isSexOrIntimacy && !isRomanceDisabled) {
-        result.thought = `Being so completely intimate together was intense... experiencing that vulnerability brings us closer.`;
-      } else {
-        result.thought = `Reflecting on recent events and keeping my own priorities in mind as things progress.`;
-      }
-    }
 
     // Explicit sexual intimacy guarantee (only when romance is enabled)
     if (isSexOrIntimacy) {
@@ -983,15 +1082,9 @@ Object.assign(AttachLink, {
         if (!result.mood || result.mood === "Neutral") {
           result.mood = "Passionate";
         }
-        if (!result.agenda) {
-          result.agenda = `Deepen our intimacy and explore what this connection means.`;
-        }
       } else {
         if (!result.mood || result.mood === "Neutral") {
           result.mood = "Warm";
-        }
-        if (!result.agenda) {
-          result.agenda = `Protect and stand by our bond through whatever comes next.`;
         }
       }
     }
@@ -1078,7 +1171,7 @@ Object.assign(AttachLink, {
       summary += `\n[${active}'s Secret Agenda: "${charData.agenda}"]`;
     }
     if (charData.coreMemory) {
-      summary += `\n[${active}'s Core Impression: "${charData.coreMemory}"]`;
+      summary += `\n[${active}'s Core Foundation: "${charData.coreMemory}"]`;
     }
     return summary;
   },
@@ -1166,14 +1259,17 @@ Object.assign(AttachLink, {
     var moodDesc = charData.mood || "Neutral";
 
     var agendaText = charData.agenda ? `Secret Agenda: "${charData.agenda}"\n` : "";
-    var coreMemoryText = charData.coreMemory ? `Core Impression: "${charData.coreMemory}"\n` : "";
+    var coreMemoryText = charData.coreMemory ? `Core Foundation: "${charData.coreMemory}"\n` : "";
 
+    var maxMem = AttachLinkConfig.maxMemoryBuffer || 5;
     var pastMemoriesText = "";
     if (charData.thoughts && Array.isArray(charData.thoughts) && charData.thoughts.length > 0) {
       var filteredPast = charData.thoughts.filter(t => t && t !== charData.coreMemory && !/deep thoughts|thoughts about the protagonist/i.test(t));
       if (filteredPast.length > 0) {
-        pastMemoriesText = `\n[Memory History]\n` + filteredPast.slice(0, 3).map(t => `• "${t}"`).join("\n") + "\n";
+        pastMemoriesText = `\n[Things Remembered with You] (${filteredPast.length}/${maxMem})\n` + filteredPast.slice(0, maxMem).map(t => `• "${t}"`).join("\n") + "\n";
       }
+    } else if (charData.coreMemory) {
+      pastMemoriesText = `\n[Things Remembered with You] (0/${maxMem})\n• (Past experiences consolidated into Core Foundation above; recording new events...)\n`;
     }
 
     var isRomanceDisabled = (state.attachLink && state.attachLink.romanceMode === "disabled");
@@ -1369,6 +1465,8 @@ AttachLink.cleanContextLeaks = function(text) {
   if (!text) return "";
   // Clean single-line or multi-line AttachLink reflection outputs
   var cleaned = text.replace(/(?:^|\n)\s*[\(\[\*]*\s*[^:\n\r]+?(?:'s)?\s*AttachLink(?:\s*(?:Consolidation|Summary|Update|Relationship Status))?\s*[:=\-][\s\S]*?(?:\)|\]|\n\n|$)/gi, "\n\n");
+  // Clean any lingering reflection or consolidation prompt tasks
+  cleaned = cleaned.replace(/(?:^|\n)\s*\[Task:\s*(?:STOP THE STORY & REFLECT|MEMORY CONSOLIDATION)[\s\S]*?(?:\)|\]|\n\n|$)/gi, "\n\n");
   // Clean any lingering pause menu notices or system banners from context so AI never sees or imitates them
   cleaned = cleaned.replace(/(?:^|\n)\s*>>>\s*[🧠💡]\s*\[AttachLink[^\]]*\][^\n<]*<<<\s*/gi, "\n\n");
   return cleaned.trim();
@@ -1589,12 +1687,37 @@ AttachLink.handleInput = function(inputText) {
       }
     }
 
+    // Command: /consolidate [Optional Name] (e.g. /consolidate or /consolidate Vera)
+    var consolidateMatch = trimmed.match(/^\/?consolidate(?:\s+(.+))?$/i);
+    if (consolidateMatch) {
+      var targetName = consolidateMatch[1] ? consolidateMatch[1].trim() : "";
+      if (!targetName) {
+        targetName = (state.attachLink && state.attachLink.activeChar) || AttachLink.findProminentNameInScene(typeof history !== 'undefined' ? history : []);
+      }
+
+      if (targetName) {
+        var charData = AttachLink.ensureCharacter(targetName, state);
+        var actualName = charData ? charData.name : targetName;
+        state.attachLink.activeChar = actualName;
+        state.attachLink.isReflecting = true;
+        state.attachLink.isConsolidating = true;
+        state.attachLink.reflectingCharacter = actualName;
+        AttachLink.syncSystemConsoleCard(state);
+        return { text: `[${actualName} consolidates memory foundation]` };
+      } else {
+        state.message = `[AttachLink] No active character detected. Type '/consolidate [Name]' (e.g. /consolidate Vera).`;
+        AttachLink.syncSystemConsoleCard(state);
+        return { text: "", stop: true };
+      }
+    }
+
     // Command: /attachlink or /al or /help
     if (trimmed.match(/^\/?(?:attachlink|al)(?:\s+help)?$/i)) {
       state.message = `[AttachLink Engine Commands]\n` +
         `• /tone [mode]      : Set tone (balanced, gritty, romance, political, comedy, horror)\n` +
         `• /romance [on|off] : Enable or disable romance gauges globally\n` +
         `• /reflect [Name]   : Trigger immediate relationship reflection\n` +
+        `• /consolidate [N]  : Synthesize up to 5 memories into 1 permanent foundation\n` +
         `• /track [Name]     : Add companion card for an unlisted NPC\n` +
         `• /untrack [Name]   : Stop tracking an NPC and delete card\n` +
         `• /setbond [N] [v]  : Set or adjust bond (e.g. /setbond Mia +1 or /setbond Mia 4)\n` +
@@ -1649,13 +1772,40 @@ AttachLink.handleContext = function(contextText) {
         state.memory.frontMemory = emotionalContext;
       }
 
-      // 3. Check for automatic or manual pause menu reflection
+      // 3. Check for automatic or manual pause menu reflection / memory consolidation
       let taskPrompt = "";
       const isReflecting = state.attachLink && state.attachLink.isReflecting;
+      const isConsolidating = state.attachLink && state.attachLink.isConsolidating;
       const turns = (state.attachLink && state.attachLink.turnsSinceReflection) || 0;
       const cooldown = (state.attachLink && state.attachLink.cooldown) || AttachLinkConfig.reflectionCooldown || 15;
+      const maxMem = AttachLinkConfig.maxMemoryBuffer || 5;
 
-      if (isReflecting || (currentAction > 0 && turns >= cooldown)) {
+      const memoryCount = (charData && charData.thoughts && Array.isArray(charData.thoughts)) ? charData.thoughts.length : 0;
+      const shouldReflect = isReflecting || (currentAction > 0 && turns >= cooldown);
+      const shouldConsolidate = isConsolidating || (memoryCount >= maxMem && shouldReflect);
+
+      if (shouldConsolidate) {
+        state.attachLink.isReflecting = true;
+        state.attachLink.isConsolidating = true;
+        state.attachLink.reflectingCharacter = state.attachLink.reflectingCharacter || targetChar;
+
+        const memoryList = charData.thoughts.slice(0, maxMem).map((m, idx) => `  ${idx + 1}. "${m}"`).join("\n");
+        const prevBase = charData.coreMemory ? `Previous Core Foundation:\n  "${charData.coreMemory}"\n\n` : "";
+
+        taskPrompt = `\n\n[Task: MEMORY CONSOLIDATION for ${targetChar}.
+${targetChar} has accumulated ${memoryCount} key memories with the protagonist:
+${prevBase}Recent Memories with Protagonist:
+${memoryList}
+
+Synthesize and consolidate all of these memories into ONE cohesive, comprehensive 1-2 sentence core foundation summarizing ${targetChar}'s lasting feelings, trust, and relationship with the protagonist.
+
+Format strictly as:
+(${targetChar}'s AttachLink Consolidation: "[1-2 sentence synthesized core foundation]" | Mood: [Emotion] | Agenda: [Their personal secret desire or next goal])
+Rules:
+• Do NOT copy bracket placeholders. Write a genuine synthesized memory for ${targetChar}.
+• Do NOT continue the story or write dialogue.]
+(${targetChar}'s AttachLink Consolidation: "`;
+      } else if (shouldReflect) {
         state.attachLink.isReflecting = true;
         state.attachLink.reflectingCharacter = state.attachLink.reflectingCharacter || targetChar;
 
@@ -1701,7 +1851,8 @@ Format strictly as:
 ${formatSnippet}
 Rules:
 • Do NOT copy bracket placeholders. Write genuine thoughts for ${targetChar}.
-• Do NOT continue the story or write dialogue.]\n`;
+• Do NOT continue the story or write dialogue.]
+(${targetChar}'s AttachLink: "`;
       }
 
       if (taskPrompt) {
@@ -1740,24 +1891,28 @@ AttachLink.handleOutput = function(outputText) {
       return { text: cleanedText };
     }
 
-    // 2. Handle Automatic or Manual Pause Menu (Reflection Turn)
+    // 2. Handle Automatic or Manual Pause Menu (Reflection Turn / Consolidation)
     if (state.attachLink && state.attachLink.isReflecting) {
       const rawCharName = state.attachLink.reflectingCharacter || state.attachLink.activeChar;
       const charName = AttachLink.cleanCharacterName(rawCharName);
+      const isConsolidation = Boolean(state.attachLink.isConsolidating || /AttachLink\s*Consolidation/i.test(cleanedText));
       
       const parsed = AttachLink.parseReflection(cleanedText, charName, (typeof history !== 'undefined' ? history : []));
 
       if (parsed && (parsed.thought || parsed.bond !== undefined || parsed.mood)) {
         const charData = AttachLink.ensureCharacter(charName, state);
         if (parsed.thought && parsed.thought.length >= 4) {
-          if (charData.coreMemory && charData.coreMemory !== parsed.thought && !/deep thoughts|thoughts about the protagonist/i.test(charData.coreMemory)) {
+          if (isConsolidation) {
+            // Memory Consolidation: Synthesize into permanent core foundation and reset the memory buffer!
+            charData.coreMemory = parsed.thought;
+            charData.thoughts = [];
+          } else {
+            // Regular reflection: Add memory to thoughts buffer
             charData.thoughts = charData.thoughts || [];
-            if (!charData.thoughts.includes(charData.coreMemory)) {
-              charData.thoughts.unshift(charData.coreMemory);
-              if (charData.thoughts.length > 5) charData.thoughts.pop();
+            if (!charData.thoughts.includes(parsed.thought)) {
+              charData.thoughts.push(parsed.thought);
             }
           }
-          charData.coreMemory = parsed.thought;
         }
         if (parsed.agenda && parsed.agenda.length >= 3) {
           charData.agenda = parsed.agenda;
@@ -1780,6 +1935,7 @@ AttachLink.handleOutput = function(outputText) {
       // Reset reflection state & flag to guarantee clean line jumps on continuation
       state.attachLink.turnsSinceReflection = 0;
       state.attachLink.isReflecting = false;
+      state.attachLink.isConsolidating = false;
       state.attachLink.reflectingCharacter = null;
       state.attachLink.justReflected = true;
       
@@ -1790,7 +1946,11 @@ AttachLink.handleOutput = function(outputText) {
       const romanceText = (!isRomanceDisabled && charData && typeof charData.romance !== 'undefined') ? ` | Romance: ${charData.romance}/5` : "";
       
       // Override output with pause message
-      cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "Companion"} reflected: Relationship updated${moodText}${bondText}${romanceText}! Press continue to resume the story. <<<\n\n`;
+      if (isConsolidation) {
+        cleanedText = `\n\n>>> 🧠 [AttachLink Memory Consolidation] ${charName || "Companion"} synthesized memories into a permanent foundation: "${charData.coreMemory}"! Press continue to resume the story. <<<\n\n`;
+      } else {
+        cleanedText = `\n\n>>> 🧠 [AttachLink Update] ${charName || "Companion"} reflected: Relationship updated${moodText}${bondText}${romanceText}! Press continue to resume the story. <<<\n\n`;
+      }
 
       // Sync the reflected character's card immediately
       if (charName) {
